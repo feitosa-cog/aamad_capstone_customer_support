@@ -1,22 +1,146 @@
-# AAMAD – AI-Assisted Multi-Agent Application Development Framework
+# Agentic Customer Support System
 
-**AAMAD** is an open, production-grade framework for building, deploying, and evolving multi-agent applications using best context engineering practices.  
-It systematizes research-driven planning, modular AI agent workflows, and rapid MVP/devops pipelines for enterprise-ready AI solutions.
+**Project**: Agentic Customer & IT Support System  
+**Version**: 1.0  
+**Date**: April 27, 2026
 
 ---
 
-## Table of Contents
+## Project Overview
 
-- [What is AAMAD?](#what-is-aamad)
-- [AAMAD phases at a glance](#aamad-phases-at-a-glance)
-- [Installation](#installation)
-- [Repository Structure](#repository-structure)
-- [How to Use the Framework](#how-to-use-the-framework)
-- [Phase 1: Define Workflow (Product Manager)](#phase-1-define-workflow-product-manager)
-- [Phase 2: Build Workflow (Multi-Agent)](#phase-2-build-workflow-multi-agent)
-- [Core Concepts](#core-concepts)
-- [Contributing](#contributing)
-- [License](#license)
+A multi-agent AI platform built on CrewAI that provides autonomous customer support for e-commerce/retail organizations and IT Service Management for internal applications.
+
+| Attribute | Value |
+|-----------|-------|
+| **Target Market** | Mid-market e-commerce ($50M-$500M revenue) |
+| **Automation Target** | 60-75% autonomous ticket resolution |
+| **Technology Stack** | Spring Boot 3.3.x + React 18.x + CrewAI |
+| **Primary Integration** | ServiceNow (Incident + KB) |
+| **Analytics** | Databricks Delta Lake |
+
+---
+
+## Table of Contents◊
+
+- [Project Overview](#project-overview)
+- [Architecture](#architecture)
+- [Project Context](#project-context)
+- [Getting Started](#getting-started)
+- [AAMAD Framework](#aamad-framework)
+
+---
+
+## Architecture
+
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        CUSTOMER INTERACTION LAYER                        │
+│   Web UI (React)  │  Mobile UI  │  API (REST)  │  Webhook Handler       │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         ORCHESTRATION LAYER                              │
+│                    CrewAI Orchestrator                                  │
+│   Triage Agent  │  Self-Service Agent  │  Human Handoff Agent             │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+          ┌──────────────────────────┼──────────────────────────┐
+          │                          │                          │
+    ┌─────▼─────┐            ┌─────▼─────┐            ┌─────▼─────┐
+    │   Order   │            │  Product  │            │    IT     │
+    │ Specialist│            │ Specialist│            │Specialist │
+    └───────────┘            └───────────┘            └───────────┘
+          │                          │                          │
+          └──────────────────────────┼──────────────────────────┘
+                                    │
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       INTEGRATION LAYER                                  │
+│   ServiceNow  │  E-commerce API  │  LLM Gateway  │  Databricks          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Technology Stack
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| Backend | Java | 21 (LTS) |
+| Framework | Spring Boot | 3.3.x (LTS) |
+| AI/Agent | Spring AI + CrewAI | Latest |
+| Frontend | React | 18.x (LTS) |
+| Database | PostgreSQL | 16 (LTS) |
+| Cache | Redis | 7.4 (LTS) |
+| LLM | Google Gemini 2.5 Pro | Latest |
+| Analytics | Databricks Delta Lake | Latest |
+
+### Agent Definitions
+
+| Agent | Role | Domain |
+|-------|------|--------|
+| Triage | Intent classification, routing | All domains |
+| Order Specialist | Order status, tracking, modifications | Orders |
+| Product Specialist | Product info, availability | Products |
+| Returns Specialist | Returns, refunds, warranties | Returns |
+| Consumer Specialist | Account, login, profile | Account |
+| IT Specialist | Internal app support | IT Service |
+| Handoff Agent | Human escalation | Escalation |
+
+---
+
+## Project Context
+
+### Define Phase (Phase 1)
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [mrd.md](project-context/1.define/mrd.md) | Market Research Document | ✅ Complete |
+| [prd.md](project-context/1.define/prd.md) | Product Requirements Document | ✅ Complete |
+| [sad.md](project-context/1.define/sad.md) | System Architecture Document | ✅ Complete |
+
+### Build Phase (Phase 2)
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| setup.md | Environment setup | ⏳ Pending |
+| frontend.md | Frontend implementation | ⏳ Pending |
+| backend.md | Backend implementation | ⏳ Pending |
+| integration.md | Integration verification | ⏳ Pending |
+| qa.md | Quality assurance | ⏳ Pending |
+
+### Deliver Phase (Phase 3)
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| deploy.md | Deployment configuration | ⏳ Pending |
+| ops.md | Operational runbook | ⏳ Pending |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Java 21 (LTS)
+- Node.js 20 (LTS)
+- PostgreSQL 16
+- Redis 7.4
+- Maven 3.9.x
+- npm 10.x
+
+### Build Commands
+
+```bash
+# Backend
+cd backend
+mvn clean install
+
+# Frontend
+cd frontend
+npm install
+npm run dev
+```
 
 ---
 
