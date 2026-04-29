@@ -20,7 +20,7 @@ A multi-agent AI platform built on CrewAI that provides autonomous customer supp
 
 ---
 
-## Table of Contents◊
+## Table of Contents
 
 - [Project Overview](#project-overview)
 - [Architecture](#architecture)
