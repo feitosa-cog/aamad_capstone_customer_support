@@ -103,8 +103,8 @@ A multi-agent AI platform built on CrewAI that provides autonomous customer supp
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [frontend-plan.md](project-context/2.build/frontend-plan.md) | Frontend implementation | ✅ Complete |
 | setup.md | Environment setup | ⏳ Pending |
-| frontend.md | Frontend implementation | ⏳ Pending |
 | backend.md | Backend implementation | ⏳ Pending |
 | integration.md | Integration verification | ⏳ Pending |
 | qa.md | Quality assurance | ⏳ Pending |
