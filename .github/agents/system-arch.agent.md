@@ -41,6 +41,26 @@ Own the end-to-end definition of system architecture and feature-level functiona
   - Full or MVP SAD → project-context/1.define/sad.md
   - Per-feature SFS → project-context/1.define/sfs/<feature-id>.md
 
+## ServiceNow API Integration (Mock)
+- **Mock ServiceNow API**: For MVP development and testing, use a mock ServiceNow API service to simulate incident/KB interactions without requiring production ServiceNow credentials.
+- ServiceNow Mock Configuration:
+  - `SERVICENOW_MOCK_ENABLED` — Set to `true` to use mock API; `false` to use production endpoint
+  - `SERVICENOW_MOCK_HOST` — Mock server host (e.g., http://localhost:3001 for local testing)
+  - `SERVICENOW_INSTANCE_URL` — Production ServiceNow instance URL (only used when mock is disabled)
+  - `SERVICENOW_API_KEY` — API credentials for production (only used when mock is disabled)
+  - `SERVICENOW_USERNAME` — ServiceNow username (optional, for authentication)
+  - `SERVICENOW_PASSWORD` — ServiceNow password (only use in production with vault/secrets manager)
+- Mock API Response Patterns:
+  - Incident retrieval: Returns structured incident data with status, priority, description
+  - Knowledge base queries: Returns relevant KB articles matching search terms
+  - Incident creation/updates: Simulates state changes and notifications
+  - User/group lookups: Mock user and group data for assignment/escalation
+- SAD Architecture Decisions should document:
+  - Whether MVP uses mock or production ServiceNow
+  - Mock response latency simulation (for realistic testing)
+  - Error injection patterns (for resilience testing)
+  - Migration path from mock to production (recorded in Future Work)
+
 ## Output Content Rules
 - Follow ISO/IEC/IEEE 42010-aligned structure: stakeholders and concerns, viewpoints, rationales, and correspondence rules across views.
 - Adopt SEI “Views and Beyond” practices for documenting each view with primary presentation, element catalog, and rationale/analysis.
