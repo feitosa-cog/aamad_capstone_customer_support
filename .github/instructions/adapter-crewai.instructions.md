@@ -125,7 +125,17 @@ description: Adapter rules for CrewAI to implement AAMAD with strong controls ac
     - Validate presence and non-emptiness of role, goal, backstory; reject trivial placeholders like “Write good content.”
 - LLM/model policy:
     - Agents must declare llm; if omitted, use org-wide default but log model name in Audit. Capture temperature and max_tokens in Audit for reproducibility.
-    - For artifact-generation tasks, set temperature ≤ 0.4 unless justified; record temperature in Audit
+    - For artifact-generation tasks, set temperature ≤ 0.4 unless justified; record temperature in Audit.
+    - **Azure Foundry (Azure OpenAI) Configuration:**
+      - LLM provider: Azure OpenAI (Foundry) for this project
+      - Required environment variables:
+        - `AZURE_OPENAI_API_KEY` — Azure OpenAI API key
+        - `AZURE_OPENAI_ENDPOINT` — Azure endpoint URL (https://<resource>.openai.azure.com/)
+        - `AZURE_OPENAI_API_VERSION` — API version (e.g., 2024-08-01-preview)
+        - `AZURE_OPENAI_DEPLOYMENT_ID` — Deployment name (e.g., gpt-4o, gpt-4-turbo)
+        - `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` — Embedding deployment for RAG
+      - CrewAI LLM string format: `"azure/{AZURE_OPENAI_DEPLOYMENT_ID}"` or full LLM object with Azure parameters
+      - All Azure parameters must be loaded from environment at runtime; never hardcode secrets in code or YAML
 
 ## Example Guidance
 - Use Prompts customization carefully; prefer explicit prompt variables and deterministic formatting.

@@ -27,10 +27,16 @@ Own the end-to-end definition of system architecture and feature-level functiona
 ## Usage
 - Load market-research.md, product-requirements-document.md, and relevant user stories at start; apply sad-template.md or sfs-template.md exactly, filling sections without changing headings.
 - For MVP, minimize layers/components, prefer simplest deployment and data flows, document deferred capabilities and architectural trade-offs.
-- This persona runs under the active adapter configured by the environment variable AAMAD_ADAPTER: 
-    - Default is crewai for this release 
-    - Architecture decisions should align with the active adapter’s runtime semantics
-    - the adapter value must be recorded in the sad.md Audit
+- This persona runs under the active adapter configured by the environment variable AAMAD_ADAPTER:
+    - Default is crewai for this release
+    - LLM Provider: Azure Foundry (Azure OpenAI) with the following configuration parameters from .env:
+      - `AZURE_OPENAI_API_KEY` — Azure OpenAI API key for authentication
+      - `AZURE_OPENAI_ENDPOINT` — Azure OpenAI endpoint URL (e.g., https://<resource-name>.openai.azure.com/)
+      - `AZURE_OPENAI_API_VERSION` — API version (e.g., 2024-08-01-preview)
+      - `AZURE_OPENAI_DEPLOYMENT_ID` — Deployment name (e.g., gpt-4o, gpt-4-turbo)
+      - `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` — Embedding model deployment for RAG/knowledge base
+    - Architecture decisions should align with the active adapter's runtime semantics and Azure Foundry capabilities
+    - the adapter value and LLM provider details must be recorded in the sad.md Audit
 - Write outputs to:
   - Full or MVP SAD → project-context/1.define/sad.md
   - Per-feature SFS → project-context/1.define/sfs/<feature-id>.md
