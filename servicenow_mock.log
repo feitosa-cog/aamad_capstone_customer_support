@@ -1,0 +1,1 @@
+{"incident_id": "INC202605190001", "short_description": "Escalation for d4e370d2-0321-4179-a337-5baa1ec22dca", "description": "{'response': 'ok', 'category': 'order', 'urgency': 3, 'requires_escalation': True, 'handoff_notes': 'notes', 'agentAssigned': 'Agent Smith'}", "urgency": 3, "caller": "u1", "status": "created", "created_at": "2026-05-19T13:17:43.611573"}

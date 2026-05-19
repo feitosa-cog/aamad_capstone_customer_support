@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const env = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
-const apiUrl = env?.VITE_API_URL || 'http://localhost:8080/api';
+const apiUrl = env?.VITE_API_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({
   baseURL: apiUrl,

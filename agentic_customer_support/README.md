@@ -96,4 +96,6 @@ The API exposes the following endpoints:
 - `GET /tickets/{ticket_id}` — get ticket details
 - `GET /health` — health check
 
+> If `OPENAI_API_KEY` is not configured, the backend falls back to a mock Crew response for local development.
+
 The ServiceNow integration in this MVP is mocked via `ServiceNowService` and writes events to `servicenow_mock.log` in the repository root.
