@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -30,6 +30,18 @@ USE_MOCK_CREW = os.getenv('OPENAI_API_KEY') is None
 if USE_MOCK_CREW:
     print('WARNING: OPENAI_API_KEY is not set. Running Crew API in mock fallback mode.')
 
+AUTHORIZED_USERS = {
+    'admin@example.com': {
+        'id': 'admin-1',
+        'email': 'admin@example.com',
+        'role': 'admin',
+        'name': 'Admin User',
+        'password': 'password123',
+    }
+}
+
+auth_tokens: Dict[str, Dict[str, Any]] = {}
+
 
 def _mock_crew_response(query: str, conversation_context: Optional[str] = None) -> Dict[str, Any]:
     return {
@@ -55,6 +67,28 @@ def _mock_escalation_response(query: str, conversation_history: List[Dict[str, A
 # ---- Pydantic models ----
 class ConversationCreateOut(BaseModel):
     conversationId: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    role: str
+    name: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserOut
+
+
+class VerifyResponse(BaseModel):
+    valid: bool
+    user: Optional[UserOut] = None
 
 
 class SendMessageIn(BaseModel):
@@ -104,6 +138,54 @@ class AssignTicketIn(BaseModel):
 
 
 # ---- Endpoints ----
+@app.post('/auth/login', response_model=AuthResponse)
+async def auth_login(request: LoginRequest):
+    user = AUTHORIZED_USERS.get(request.email)
+    if not user or user.get('password') != request.password:
+        raise HTTPException(status_code=401, detail='Invalid email or password')
+
+    token = str(uuid.uuid4())
+    auth_tokens[token] = {
+        'id': user['id'],
+        'email': user['email'],
+        'role': user['role'],
+        'name': user['name'],
+    }
+
+    return {
+        'token': token,
+        'user': auth_tokens[token],
+    }
+
+
+@app.get('/auth/verify', response_model=VerifyResponse)
+async def auth_verify(authorization: Optional[str] = Header(None, alias='Authorization')):
+    if not authorization or not authorization.startswith('Bearer '):
+        return {'valid': False}
+    token = authorization.split(' ', 1)[1]
+    user = auth_tokens.get(token)
+    if not user:
+        return {'valid': False}
+    return {'valid': True, 'user': user}
+
+
+@app.post('/auth/refresh', response_model=AuthResponse)
+async def auth_refresh(authorization: Optional[str] = Header(None, alias='Authorization')):
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail='Invalid token')
+    token = authorization.split(' ', 1)[1]
+    user = auth_tokens.get(token)
+    if not user:
+        raise HTTPException(status_code=401, detail='Invalid token')
+
+    new_token = str(uuid.uuid4())
+    auth_tokens[new_token] = user
+    return {
+        'token': new_token,
+        'user': user,
+    }
+
+
 @app.post('/chat/conversations', response_model=ConversationCreateOut)
 async def create_conversation(user_id: Optional[str] = None):
     conv = conversation_service.create_conversation(user_id=user_id or 'guest')

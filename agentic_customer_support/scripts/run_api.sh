@@ -14,6 +14,14 @@ if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
   source "$REPO_ROOT/.venv/bin/activate"
 fi
 
+# Load local environment variables from project .env if present
+if [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
 export PYTHONPATH="$ROOT_DIR/src"
 
 # Use the venv uvicorn if available
