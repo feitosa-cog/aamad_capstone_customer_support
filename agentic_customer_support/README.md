@@ -52,3 +52,48 @@ For support, questions, or feedback regarding the AgenticCustomerSupport Crew or
 - [Chat with our docs](https://chatg.pt/DWjSBZn)
 
 Let's create wonders together with the power and simplicity of crewAI.
+
+---
+
+## Backend API and Run Script
+
+This repository also includes a small FastAPI-based backend for the CrewAI crew.
+
+Quick start (backend API - local development):
+
+1. From the repository root, create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+2. Install Python dependencies (from repository root):
+
+```bash
+pip install -e agentic_customer_support
+pip install uvicorn[standard] fastapi SQLAlchemy pydantic
+```
+
+3. Start the API using the helper script:
+
+```bash
+bash agentic_customer_support/scripts/run_api.sh
+```
+
+Or run the server directly:
+
+```bash
+PYTHONPATH=agentic_customer_support/src .venv/bin/uvicorn agentic_customer_support.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+The API exposes the following endpoints:
+
+- `POST /chat` — send a message to the crew (creates conversation if needed)
+- `POST /escalate` — request human escalation
+- `GET /chat/{conversation_id}` — retrieve conversation history
+- `GET /tickets` — list tickets
+- `GET /tickets/{ticket_id}` — get ticket details
+- `GET /health` — health check
+
+The ServiceNow integration in this MVP is mocked via `ServiceNowService` and writes events to `servicenow_mock.log` in the repository root.

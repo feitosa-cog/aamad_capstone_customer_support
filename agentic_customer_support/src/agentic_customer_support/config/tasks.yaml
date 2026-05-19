@@ -1,17 +1,101 @@
-research_task:
+triage_task:
   description: >
-    Conduct a thorough research about {topic}
-    Make sure you find any interesting and relevant information given
-    the current year is {current_year}.
+    Analyze the customer query and classify it into one of these categories:
+    - order (order tracking, shipping, modifications)
+    - product (product info, availability, specifications)
+    - returns (returns, refunds, exchanges)
+    - account (account issues, billing, password reset)
+    - it (internal IT issues, technical support)
+    
+    Also determine the urgency level (1-5) and any special handling notes.
   expected_output: >
-    A list with 10 bullet points of the most relevant information about {topic}
-  agent: researcher
+    A clear classification with the category, urgency level (1-5), and
+    recommended next steps for the appropriate specialist agent.
+  agent: triage_agent
 
-reporting_task:
+order_task:
   description: >
-    Review the context you got and expand each topic into a full section for a report.
-    Make sure the report is detailed and contains any and all relevant information.
+    Handle the customer's order-related inquiry. Use available tools to:
+    - Retrieve order details by ID or email
+    - Check shipping status and tracking information
+    - Process order modifications or cancellations
+    - Calculate any applicable fees or refunds
+    
+    Provide accurate, helpful information and guide the customer to resolution.
   expected_output: >
-    A fully fledged report with the main topics, each with a full section of information.
-    Formatted as markdown without '```'
-  agent: reporting_analyst
+    A clear explanation of the order status, any actions taken, and next steps
+    for the customer. Include tracking information where applicable.
+  agent: order_specialist
+
+product_task:
+  description: >
+    Address the customer's product inquiry. Use available tools to:
+    - Retrieve detailed product information
+    - Check product availability and stock levels
+    - Compare products based on features
+    - Explain specifications and features
+    
+    Provide helpful guidance to assist customer decision-making.
+  expected_output: >
+    A comprehensive response with product details, availability, comparisons
+    if requested, and any recommendations based on the customer's needs.
+  agent: product_specialist
+
+returns_task:
+  description: >
+    Process the customer's return or refund request. Use available tools to:
+    - Verify return eligibility based on policies
+    - Generate return shipping labels
+    - Calculate refund amounts accurately
+    - Process refunds and track return status
+    
+    Ensure customer satisfaction while maintaining inventory accuracy.
+  expected_output: >
+    Clear instructions for the return process, refund amount, timeline for
+    refund processing, and any tracking information needed.
+  agent: returns_specialist
+
+account_task:
+  description: >
+    Handle the customer's account or billing inquiry. Use available tools to:
+    - Retrieve account information
+    - Explain charges or transactions
+    - Reset passwords or security settings
+    - Update account preferences
+    
+    Provide efficient and empathetic support.
+  expected_output: >
+    A clear resolution of the account issue with any actions taken, updated
+    account information if relevant, and next steps for the customer.
+  agent: consumer_specialist
+
+it_task:
+  description: >
+    Address the internal IT incident reported by the employee. Use available tools to:
+    - Log the incident in the tracking system
+    - Gather diagnostic information
+    - Attempt technical resolution
+    - Schedule follow-up or escalation if needed
+    
+    Provide clear solutions and document the resolution.
+  expected_output: >
+    A detailed incident report with the issue description, troubleshooting steps
+    taken, resolution (if applicable), and any follow-up actions needed.
+  agent: it_specialist
+
+handoff_task:
+  description: >
+    Prepare a comprehensive handoff summary for the human support team. Include:
+    - Full conversation history summary
+    - Customer issue summary with key details
+    - Attempted solutions and why they didn't work
+    - Urgency level and special handling notes
+    - Customer sentiment and frustration level
+    - Recommended approach for human agent
+    
+    Ensure nothing is lost in the transition to human support.
+  expected_output: >
+    A well-structured handoff document that gives the human agent all context
+    needed to immediately understand and continue assisting the customer without
+    requiring them to re-read the entire conversation.
+  agent: handoff_agent
