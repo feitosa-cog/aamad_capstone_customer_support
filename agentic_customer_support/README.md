@@ -75,7 +75,7 @@ pip install -e agentic_customer_support
 pip install uvicorn[standard] fastapi SQLAlchemy pydantic
 ```
 
-3. Start the API using the helper script:
+3. Start the API using the helper script. This script loads `.env` values and exports `PYTHONPATH=agentic_customer_support/src` before starting Uvicorn:
 
 ```bash
 bash agentic_customer_support/scripts/run_api.sh

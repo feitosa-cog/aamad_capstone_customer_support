@@ -2,7 +2,7 @@ import os
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
-from typing import Optional
+from typing import Optional, Callable, Tuple
 import json
 
 
@@ -169,16 +169,79 @@ class AgenticCustomerSupport():
             'conversation_context': conversation_context or 'No prior context',
             'current_timestamp': str(self._get_timestamp())
         }
-        
+
         try:
-            result = self.crew().kickoff(inputs=inputs)
-            return self._parse_crew_output(result)
+            classification_result = self.triage_agent().execute_task(self.triage_task(), inputs)
+            classification = self._parse_crew_output(classification_result)
+            category = classification.get('category', 'general')
+
+            if classification.get('requires_escalation'):
+                return self._process_handoff(inputs, classification)
+
+            specialist_result = self._execute_specialist_task(category, inputs)
+            if specialist_result is not None:
+                specialist_output = self._parse_crew_output(specialist_result)
+                return self._merge_classification_with_specialist(classification, specialist_output)
+
+            return {
+                'response': classification.get('response') or self._build_general_response(query),
+                'category': 'general',
+                'urgency': classification.get('urgency', 3),
+                'requires_escalation': False,
+                'handoff_notes': classification.get('handoff_notes', ''),
+            }
         except Exception as e:
             return {
                 'error': str(e),
                 'requires_escalation': True,
                 'response': 'I encountered an issue processing your request. A human agent will assist you shortly.'
             }
+
+    def _specialist_task_map(self) -> dict[str, Tuple[Callable[[], BaseAgent], Callable[[], Task]]]:
+        return {
+            'order': (self.order_specialist, self.order_task),
+            'product': (self.product_specialist, self.product_task),
+            'returns': (self.returns_specialist, self.returns_task),
+            'account': (self.consumer_specialist, self.account_task),
+            'it': (self.it_specialist, self.it_task),
+        }
+
+    def _execute_specialist_task(self, category: str, inputs: dict) -> Optional[str]:
+        mapping = self._specialist_task_map()
+        if category not in mapping:
+            return None
+
+        agent_callable, task_callable = mapping[category]
+        return agent_callable().execute_task(task_callable(), inputs)
+
+    def _process_handoff(self, inputs: dict, classification: dict) -> dict:
+        try:
+            handoff_result = self.handoff_agent().execute_task(self.handoff_task(), inputs)
+            parsed_handoff = self._parse_crew_output(handoff_result)
+            merged = self._merge_classification_with_specialist(classification, parsed_handoff)
+            merged['requires_escalation'] = True
+            return merged
+        except Exception as e:
+            return {
+                'error': str(e),
+                'requires_escalation': True,
+                'response': 'I encountered an issue preparing the handoff. A human agent will assist you shortly.',
+            }
+
+    def _merge_classification_with_specialist(self, classification: dict, specialist_output: dict) -> dict:
+        return {
+            'response': specialist_output.get('response') or classification.get('response') or self._build_general_response(''),
+            'category': specialist_output.get('category', classification.get('category', 'unknown')),
+            'urgency': specialist_output.get('urgency', classification.get('urgency', 3)),
+            'requires_escalation': specialist_output.get('requires_escalation', classification.get('requires_escalation', False)),
+            'handoff_notes': specialist_output.get('handoff_notes', classification.get('handoff_notes', '')),
+        }
+
+    def _build_general_response(self, query: str) -> str:
+        return (
+            'I can help with order tracking, product information, returns, account support, '
+            'and internal IT issues. Please tell me how I can assist you.'
+        )
 
     def escalate_to_human(self, query: str, conversation_history: list) -> dict:
         """
@@ -217,25 +280,30 @@ class AgenticCustomerSupport():
 
     def _parse_crew_output(self, crew_output: str) -> dict:
         """Parse crew output into structured response"""
-        try:
-            # Try to parse as JSON if the crew output is JSON formatted
-            parsed = json.loads(crew_output)
-            return {
-                'response': parsed.get('response', crew_output),
-                'category': parsed.get('category', 'unknown'),
-                'urgency': parsed.get('urgency', 3),
-                'requires_escalation': parsed.get('requires_escalation', False),
-                'handoff_notes': parsed.get('handoff_notes', '')
-            }
-        except (json.JSONDecodeError, TypeError):
-            # If not JSON, treat the entire output as the response
-            return {
-                'response': str(crew_output),
-                'category': 'unknown',
-                'urgency': 3,
-                'requires_escalation': False,
-                'handoff_notes': ''
-            }
+        # If the crew returned a dict-like object already, use it directly
+        if isinstance(crew_output, dict):
+            parsed = crew_output
+        else:
+            try:
+                parsed = json.loads(crew_output)
+            except (json.JSONDecodeError, TypeError):
+                # Fall back to treating the entire output as a plain text response
+                return {
+                    'response': str(crew_output),
+                    'category': 'unknown',
+                    'urgency': 3,
+                    'requires_escalation': False,
+                    'handoff_notes': ''
+                }
+
+        # Normalize parsed structure and provide safe defaults
+        return {
+            'response': parsed.get('response') if isinstance(parsed, dict) else str(parsed),
+            'category': parsed.get('category', 'unknown'),
+            'urgency': parsed.get('urgency', 3),
+            'requires_escalation': parsed.get('requires_escalation', False),
+            'handoff_notes': parsed.get('handoff_notes', '')
+        }
 
     def _has_llm_credentials(self) -> bool:
         """Return True if an LLM provider key is configured."""
@@ -244,7 +312,7 @@ class AgenticCustomerSupport():
     def _mock_process_customer_query(self, query: str) -> dict:
         """Fallback response when the external LLM key is not configured."""
         normalized = query.strip().lower()
-        if 'order' in normalized:
+        if any(keyword in normalized for keyword in ['order', 'tracking', 'shipment', 'shipping']):
             return {
                 'response': 'Your order is on the way and should arrive within 2 business days.',
                 'category': 'order',
@@ -252,15 +320,39 @@ class AgenticCustomerSupport():
                 'requires_escalation': False,
                 'handoff_notes': '',
             }
-        if 'return' in normalized or 'refund' in normalized:
+        if any(keyword in normalized for keyword in ['return', 'refund', 'exchange', 'return policy']):
             return {
-                'response': 'I can help with your return. Please provide your order number.',
+                'response': 'I can help with your return. Please provide your order number and reason for return.',
                 'category': 'returns',
                 'urgency': 3,
                 'requires_escalation': False,
                 'handoff_notes': '',
             }
-        if 'agent' in normalized or 'human' in normalized:
+        if any(keyword in normalized for keyword in ['product', 'spec', 'specs', 'availability', 'stock', 'price', 'detail']):
+            return {
+                'response': 'Here are the product details you requested. Let me know if you want a comparison or availability check.',
+                'category': 'product',
+                'urgency': 2,
+                'requires_escalation': False,
+                'handoff_notes': '',
+            }
+        if any(keyword in normalized for keyword in ['account', 'login', 'password', 'billing', 'subscription', 'profile', 'cancel my subscription']):
+            return {
+                'response': 'I can help with your account issue. Please describe the login or billing problem in more detail.',
+                'category': 'account',
+                'urgency': 3,
+                'requires_escalation': False,
+                'handoff_notes': '',
+            }
+        if any(keyword in normalized for keyword in ['portal', 'timesheet', 'internal', 'system', 'app', 'error', 'it issue', 'service now', 'servicenow']):
+            return {
+                'response': 'I have detected an internal IT issue. I am escalating this to the IT support team for review.',
+                'category': 'it',
+                'urgency': 4,
+                'requires_escalation': True,
+                'handoff_notes': 'Internal IT issue detected; prepare incident details.',
+            }
+        if any(keyword in normalized for keyword in ['agent', 'human', 'handoff']):
             return {
                 'response': 'I am connecting you to a human agent now.',
                 'category': 'general',

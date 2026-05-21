@@ -1,3 +1,10 @@
 {"incident_id": "INC202605190001", "short_description": "Escalation for 8b7bfd68-4c40-4a48-a36d-a4db3e624725", "description": "{'response': 'ok', 'category': 'order', 'urgency': 3, 'requires_escalation': True, 'handoff_notes': 'notes'}", "urgency": 3, "caller": null, "status": "created", "created_at": "2026-05-19T11:50:40.727644"}
 {"incident_id": "INC202605190001", "short_description": "short", "description": "desc", "urgency": 3, "caller": "caller1", "status": "created", "created_at": "2026-05-19T11:50:40.732040"}
 {"incident_id": "INC202605190001", "short_description": "a", "description": "b", "urgency": 3, "caller": null, "status": "created", "created_at": "2026-05-19T11:50:40.732350"}
+{"incident_id": "INC202605210001", "short_description": "short", "description": "desc", "urgency": 3, "caller": "caller1", "status": "created", "created_at": "2026-05-21T11:40:44.607329"}
+{"incident_id": "INC202605210001", "short_description": "a", "description": "b", "urgency": 3, "caller": null, "status": "created", "created_at": "2026-05-21T11:40:44.607815"}
+{"incident_id": "INC202605210001", "short_description": "short", "description": "desc", "urgency": 3, "caller": "caller1", "status": "created", "created_at": "2026-05-21T11:52:33.909945"}
+{"incident_id": "INC202605210001", "short_description": "a", "description": "b", "urgency": 3, "caller": null, "status": "created", "created_at": "2026-05-21T11:52:33.910312"}
+{"incident_id": "INC202605210001", "short_description": "Escalation for 23bb2a95-f2bb-4cb9-bffb-429d74bb676f", "description": "{'response': 'ok', 'category': 'order', 'urgency': 3, 'requires_escalation': True, 'handoff_notes': 'notes', 'agentAssigned': 'Agent Smith'}", "urgency": 3, "caller": "u1", "status": "created", "created_at": "2026-05-21T11:55:04.005815"}
+{"incident_id": "INC202605210001", "short_description": "short", "description": "desc", "urgency": 3, "caller": "caller1", "status": "created", "created_at": "2026-05-21T11:55:04.010564"}
+{"incident_id": "INC202605210001", "short_description": "a", "description": "b", "urgency": 3, "caller": null, "status": "created", "created_at": "2026-05-21T11:55:04.010915"}

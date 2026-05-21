@@ -44,8 +44,69 @@ auth_tokens: Dict[str, Dict[str, Any]] = {}
 
 
 def _mock_crew_response(query: str, conversation_context: Optional[str] = None) -> Dict[str, Any]:
+    normalized = query.strip().lower()
+    if any(keyword in normalized for keyword in ['order', 'tracking', 'shipment', 'shipping']):
+        return {
+            'response': 'Your order is on the way and should arrive within 2 business days.',
+            'category': 'order',
+            'urgency': 3,
+            'requires_escalation': False,
+            'confidence': 0.9,
+            'agentAssigned': None,
+            'handoff_notes': '',
+        }
+    if any(keyword in normalized for keyword in ['return', 'refund', 'exchange', 'return policy']):
+        return {
+            'response': 'I can help with your return. Please provide your order number and reason for return.',
+            'category': 'returns',
+            'urgency': 3,
+            'requires_escalation': False,
+            'confidence': 0.9,
+            'agentAssigned': None,
+            'handoff_notes': '',
+        }
+    if any(keyword in normalized for keyword in ['product', 'spec', 'specs', 'availability', 'stock', 'price', 'detail']):
+        return {
+            'response': 'Here are the product details you requested. Let me know if you want a comparison or availability check.',
+            'category': 'product',
+            'urgency': 2,
+            'requires_escalation': False,
+            'confidence': 0.85,
+            'agentAssigned': None,
+            'handoff_notes': '',
+        }
+    if any(keyword in normalized for keyword in ['account', 'login', 'password', 'billing', 'subscription', 'profile', 'cancel my subscription']):
+        return {
+            'response': 'I can help with your account issue. Please describe the login or billing problem in more detail.',
+            'category': 'account',
+            'urgency': 3,
+            'requires_escalation': False,
+            'confidence': 0.85,
+            'agentAssigned': None,
+            'handoff_notes': '',
+        }
+    if any(keyword in normalized for keyword in ['portal', 'timesheet', 'internal', 'system', 'app', 'error', 'it issue', 'service now', 'servicenow']):
+        return {
+            'response': 'I have detected an internal IT issue. I am escalating this to the IT support team for review.',
+            'category': 'it',
+            'urgency': 4,
+            'requires_escalation': True,
+            'confidence': 0.75,
+            'agentAssigned': None,
+            'handoff_notes': 'Internal IT issue detected; prepare incident details.',
+        }
+    if any(keyword in normalized for keyword in ['agent', 'human', 'handoff']):
+        return {
+            'response': 'I am connecting you to a human agent now.',
+            'category': 'general',
+            'urgency': 4,
+            'requires_escalation': True,
+            'confidence': 0.8,
+            'agentAssigned': None,
+            'handoff_notes': 'Manual handoff requested by customer.',
+        }
     return {
-        'response': 'This is a mock response because OPENAI_API_KEY is not configured.',
+        'response': 'Thanks for your message. I am reviewing your request and will respond shortly.',
         'category': 'general',
         'urgency': 3,
         'requires_escalation': False,
@@ -210,13 +271,10 @@ async def send_message(msg: SendMessageIn):
             metadata=str(msg.metadata) if msg.metadata else None,
         )
 
-        # Process via crew
-        if USE_MOCK_CREW:
-            result = _mock_crew_response(query=msg.message, conversation_context=None)
-        else:
-            result = crew.process_customer_query(query=msg.message, conversation_context=None)
-            if 'error' in result:
-                raise HTTPException(status_code=500, detail=result['error'])
+        # Process via crew; AgenticCustomerSupport handles mock fallback when no LLM key is configured
+        result = crew.process_customer_query(query=msg.message, conversation_context=None)
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
 
         ticket_status = 'escalated' if result.get('requires_escalation') else 'resolved'
         ticket = ticket_service.create_ticket(conversation_id=conv_id, user_id=user_id, payload=result)

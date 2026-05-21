@@ -36,6 +36,8 @@ npm run test
 
 # Lint code
 npm run lint
+
+> Note: The frontend lint command has been fixed to support the current Vite + TypeScript setup.
 ```
 
 ## Environment Configuration
