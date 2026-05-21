@@ -1,7 +1,9 @@
 import os
+import re
 from crewai import Agent, Crew, Process, Task
-from crewai.project import CrewBase, agent, crew, task
+from crewai.project import CrewBase, agent, crew, task, output_json
 from crewai.agents.agent_builder.base_agent import BaseAgent
+from pydantic import BaseModel
 from typing import Optional, Callable, Tuple
 import json
 
@@ -9,6 +11,22 @@ import json
 @CrewBase
 class AgenticCustomerSupport():
     """Agentic Customer Support System - Multi-agent crew for handling customer inquiries"""
+
+    @output_json
+    class SupportResponse(BaseModel):
+        response: str
+        category: str
+        urgency: int
+        requires_escalation: bool = False
+        handoff_notes: str = ''
+
+    @output_json
+    class TriageResponse(BaseModel):
+        category: str
+        urgency: int
+        requires_escalation: bool = False
+        handoff_notes: str = ''
+        response: Optional[str] = None
 
     agents: list[BaseAgent]
     tasks: list[Task]
@@ -296,9 +314,11 @@ class AgenticCustomerSupport():
                     'handoff_notes': ''
                 }
 
-        # Normalize parsed structure and provide safe defaults
+        response_text = parsed.get('response') if isinstance(parsed, dict) else str(parsed)
+        if response_text is None:
+            response_text = ''
         return {
-            'response': parsed.get('response') if isinstance(parsed, dict) else str(parsed),
+            'response': self._sanitize_response(response_text),
             'category': parsed.get('category', 'unknown'),
             'urgency': parsed.get('urgency', 3),
             'requires_escalation': parsed.get('requires_escalation', False),
@@ -367,6 +387,26 @@ class AgenticCustomerSupport():
             'requires_escalation': False,
             'handoff_notes': '',
         }
+
+    def _sanitize_response(self, response: str) -> str:
+        """Ensure only customer-facing text is returned in the response."""
+        if not isinstance(response, str):
+            return str(response)
+
+        if re.search(r"Category:|Urgency Level:|Recommended Next Steps|Special Handling Notes|steps for the specialist|prepare incident details", response, re.IGNORECASE):
+            filtered_lines = []
+            for line in response.splitlines():
+                cleaned = line.strip()
+                if not cleaned:
+                    continue
+                if re.match(r"^(Category|Urgency Level|Recommended Next Steps|Special Handling Notes|Ensure|Provide|Ask|Confirm|Specialist|Escalate)\b", cleaned, re.IGNORECASE):
+                    continue
+                filtered_lines.append(cleaned)
+            if filtered_lines:
+                return ' '.join(filtered_lines)
+            return self._build_general_response('')
+
+        return response
 
     def _format_conversation_history(self, conversation_history: list) -> str:
         """Format conversation history for context"""

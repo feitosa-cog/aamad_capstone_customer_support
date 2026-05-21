@@ -52,3 +52,33 @@ def test_process_customer_query_returns_general_response_for_generic_query(monke
     assert result["category"] == "general"
     assert result["requires_escalation"] is False
     assert "I can help" in result["response"]
+
+
+def test_process_customer_query_sanitizes_internal_specialist_guidance(monkeypatch):
+    crew = AgenticCustomerSupport()
+    monkeypatch.setattr(AgenticCustomerSupport, "_has_llm_credentials", lambda self: True)
+    monkeypatch.setattr(AgenticCustomerSupport, "triage_task", lambda self: object())
+    monkeypatch.setattr(
+        AgenticCustomerSupport,
+        "triage_agent",
+        lambda self: FakeAgent('{"category":"account","requires_escalation": false, "urgency": 2}')
+    )
+    monkeypatch.setattr(AgenticCustomerSupport, "account_task", lambda self: object())
+    monkeypatch.setattr(
+        AgenticCustomerSupport,
+        "consumer_specialist",
+        lambda self: FakeAgent({
+            'response': 'Category: account (account issues, billing, password reset)\nUrgency Level: 2 (Low to Moderate)\nRecommended Next Steps for Specialist Agent: - Provide step-by-step instructions on how to change the password...',
+            'category': 'account',
+            'urgency': 2,
+            'requires_escalation': False,
+            'handoff_notes': ''
+        })
+    )
+
+    result = crew.process_customer_query("how can I change my password on Microsoft account?")
+
+    assert result["category"] == "account"
+    assert result["requires_escalation"] is False
+    assert "Category:" not in result["response"]
+    assert "Recommended Next Steps" not in result["response"]

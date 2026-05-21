@@ -11,6 +11,9 @@ triage_task:
   expected_output: >
     A clear classification with the category, urgency level (1-5), and
     recommended next steps for the appropriate specialist agent.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response field should be a
+    short, customer-facing answer when appropriate.
   agent: triage_agent
 
 order_task:
@@ -25,6 +28,9 @@ order_task:
   expected_output: >
     A clear explanation of the order status, any actions taken, and next steps
     for the customer. Include tracking information where applicable.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response must be a concise,
+    customer-facing answer.
   agent: order_specialist
 
 product_task:
@@ -39,6 +45,9 @@ product_task:
   expected_output: >
     A comprehensive response with product details, availability, comparisons
     if requested, and any recommendations based on the customer's needs.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response must be a concise,
+    customer-facing answer.
   agent: product_specialist
 
 returns_task:
@@ -53,6 +62,9 @@ returns_task:
   expected_output: >
     Clear instructions for the return process, refund amount, timeline for
     refund processing, and any tracking information needed.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response must be a concise,
+    customer-facing answer.
   agent: returns_specialist
 
 account_task:
@@ -67,6 +79,9 @@ account_task:
   expected_output: >
     A clear resolution of the account issue with any actions taken, updated
     account information if relevant, and next steps for the customer.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response must be a concise,
+    customer-facing answer.
   agent: consumer_specialist
 
 it_task:
@@ -81,6 +96,9 @@ it_task:
   expected_output: >
     A detailed incident report with the issue description, troubleshooting steps
     taken, resolution (if applicable), and any follow-up actions needed.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response must be a concise,
+    customer-facing answer.
   agent: it_specialist
 
 handoff_task:
@@ -98,4 +116,7 @@ handoff_task:
     A well-structured handoff document that gives the human agent all context
     needed to immediately understand and continue assisting the customer without
     requiring them to re-read the entire conversation.
+    Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes. The response should be a short,
+    customer-facing confirmation that the issue is being escalated.
   agent: handoff_agent
