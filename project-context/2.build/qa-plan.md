@@ -55,7 +55,8 @@ This document defines the QA test plan and records execution results for the Age
 
 | ID | Scenario | Command | Expected Result | Actual Result | Status |
 |---|---|---|---|---|---|
-| BE-AUTO-01 | Run backend tests (API, crew, services) | cd agentic_customer_support && .venv python -m pytest tests -q | All tests pass | 12 passed, 0 failed | Pass |
+| BE-AUTO-01 | Run backend tests (API, crew, services) | cd agentic_customer_support && /Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest tests -q | All tests pass | 18 passed, 0 failed | Pass |
+| BE-AUTO-02 | Run focused API end-to-end tests | cd agentic_customer_support && /Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest tests/test_api.py -k 'agent_queue_flow or end_to_end_message_to_resolution_flow' -q | Targeted flow tests pass | 2 passed, 9 deselected | Pass |
 
 ### 4.2 Automated Frontend Suite
 
@@ -78,8 +79,12 @@ This document defines the QA test plan and records execution results for the Age
 | API-LIVE-08 | POST /api/v1/tickets | Requestor submit escalatable issue | Ticket created in escalated state | Ticket created with escalated status | Pass |
 | API-LIVE-09 | GET /api/v1/queue | Agent queue visibility | Includes escalated ticket | Queue returned submitted ticket | Pass |
 | API-LIVE-10 | POST /api/v1/queue/{id}/accept | Agent accepts ticket | Status becomes in_progress | Returned in_progress | Pass |
-| API-LIVE-11 | POST /api/v1/queue/{id}/resolve | Agent resolves ticket | Status becomes resolved | Returned resolved with resolutionNotes | Pass |
-| API-LIVE-12 | GET /api/v1/system/health | Admin-only system health | 200 and health payload | Returned full health/config payload | Pass |
+| API-LIVE-11 | GET /api/v1/tickets/{id}/handoff-context | Agent fetches handoff payload | 200 with escalation + ai_summary + customer_context | Returned complete handoff context payload | Pass |
+| API-LIVE-12 | POST /api/v1/tickets/{id}/messages | Agent posts live chat message | 200 and persisted message payload | Returned message with sender_type=real_agent | Pass |
+| API-LIVE-13 | GET /api/v1/tickets/{id}/messages | Agent retrieves live chat history | 200 and ordered messages | Returned messages including real-agent update | Pass |
+| API-LIVE-14 | POST /api/v1/queue/{id}/resolve | Agent resolves ticket | Status becomes resolved | Returned resolved with conversationState=HUMAN_RESOLVED | Pass |
+| API-LIVE-15 | GET /api/v1/system/health | Admin-only system health | 200 and health payload | Returned full health/config payload | Pass |
+| API-LIVE-16 | GET /api/v1/users (RBAC) | Verify role restrictions | 403 for REQUESTOR/REAL_AGENT and 200 for PLATFORM_ADMIN | Returned 403/403/200 as expected | Pass |
 
 ### 4.4 Application Crew Agent Validation
 
@@ -100,13 +105,14 @@ Crew tested with OPENAI_API_KEY unset to force deterministic fallback path and v
 | E2E-01 | Customer order query to ticket lifecycle | Conversation created, AI response returned, ticket listed | Completed in live API smoke | Pass |
 | E2E-02 | Requestor to agent queue workflow | Ticket submitted, visible in queue, accepted, resolved | Completed in live RBAC API smoke | Pass |
 | E2E-03 | Role-based administration check | Admin can retrieve system health | Completed and returned healthy services | Pass |
+| E2E-04 | Automated request-to-resolution API flow tests | End-to-end tests pass in backend suite | test_agent_queue_flow and test_end_to_end_message_to_resolution_flow passed | Pass |
 
 ## 5. Expected vs Actual Summary
 
 | Area | Expected | Actual | Result |
 |---|---|---|---|
 | PRD/SAD feature alignment | RBAC + multi-agent + ticket lifecycle implemented in MVP | Implemented and testable in current build | Match |
-| Backend stability | All backend tests pass | 12 passed | Match |
+| Backend stability | All backend tests pass | 18 passed (+2 focused E2E pass) | Match |
 | Frontend functionality baseline | Tests and build pass | 9 tests passed, build passed | Match |
 | Crew specialist behavior | Domain-aware routing across 5 specialist paths | All 5 specialist paths validated | Match |
 | End-to-end support flow | Request -> routing -> queue -> agent resolution | Validated via live API smoke | Match |
@@ -134,9 +140,9 @@ Crew tested with OPENAI_API_KEY unset to force deterministic fallback path and v
 | Frontend plan review | Complete | Coverage mapped to implemented frontend modules |
 | Backend plan review | Complete | Endpoint and crew scope validated |
 | Integration plan review | Complete | Contract and e2e expectations cross-checked |
-| Backend automated tests | Complete | 12 passed |
+| Backend automated tests | Complete | 18 passed (+2 focused E2E tests) |
 | Frontend automated tests | Complete | 9 passed |
-| API endpoint testing | Complete | 12 live endpoint checks passed |
+| API endpoint testing | Complete | 16 live endpoint checks passed |
 | Crew agent testing | Complete | 5 specialist paths passed |
 | End-to-end testing | Complete | Core request-to-resolution flows passed |
 | Findings documentation | Complete | This report updated |
@@ -144,12 +150,14 @@ Crew tested with OPENAI_API_KEY unset to force deterministic fallback path and v
 ## 8. Commands Executed (Evidence Log)
 
 - cd agentic_customer_support && /Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest tests -q
+- cd agentic_customer_support && /Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest tests/test_api.py -k 'agent_queue_flow or end_to_end_message_to_resolution_flow' -q
 - cd frontend && npm test -- --run
 - cd frontend && npm run build
 - bash agentic_customer_support/scripts/run_api.sh
 - curl-based live checks for /health, /chat/conversations, /chat, /tickets
-- curl-based RBAC flow for /auth/login, /api/v1/tickets, /api/v1/queue, /api/v1/queue/{id}/accept, /api/v1/queue/{id}/resolve, /api/v1/system/health
+- curl-based RBAC flow for /auth/login, /api/v1/tickets, /api/v1/tickets/mine, /api/v1/queue, /api/v1/queue/{id}/accept, /api/v1/tickets/{id}/handoff-context, /api/v1/tickets/{id}/messages, /api/v1/queue/{id}/resolve, /api/v1/system/health, /api/v1/users
 - Crew routing validation with PYTHONPATH=src and OPENAI_API_KEY unset
+- Frontend runtime route smoke with curl for /, /login, /chat, /dashboard, /agent, /admin
 
 ## 9. Final QA Assessment
 
@@ -189,3 +197,20 @@ Follow-up validation executed after initial QA completion.
 ### 10.4 Updated Quality Conclusion
 
 No new defects were introduced by the browser smoke follow-up. Role-based authorization behavior remains consistent with SAD expectations. Remaining QA gap is browser-automation-level validation of visual interactions and state transitions.
+
+## 11. Current Session Revalidation (2026-06-06)
+
+### 11.1 What Was Re-Executed
+
+- Re-read PRD, SAD, and all build plans to align tests with current highlighted features and contracts.
+- Re-ran full backend tests and focused API E2E tests.
+- Re-ran frontend unit tests and production build.
+- Executed live API/RBAC flow including escalation queue accept, handoff context retrieval, live ticket messaging, and human resolution state transition.
+- Re-ran direct Crew specialization checks for order, returns, product, consumer/account, and IT escalation routes.
+- Re-validated frontend runtime route availability.
+
+### 11.2 Session Findings
+
+- No blocking functional defects found.
+- One QA-script issue occurred initially due to incorrect seeded login emails and incorrect ticket-id field extraction (`ticketId` vs `id`); corrected and re-run passed. This was a test harness input issue, not an application defect.
+- Known residual risks remain unchanged: limited frontend automated coverage depth and lack of browser-automation E2E assertions.
