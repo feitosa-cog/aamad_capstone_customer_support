@@ -47,3 +47,96 @@ def test_chat_and_ticket(monkeypatch):
     assert "data" in body2 and "pagination" in body2
     assert isinstance(body2["data"], list)
     assert body2["pagination"]["total"] >= 1
+
+
+def _login(client: TestClient, email: str, password: str) -> str:
+    response = client.post('/auth/login', json={'email': email, 'password': password})
+    assert response.status_code == 200
+    return response.json()['token']
+
+
+def test_rbac_requestor_and_admin_endpoints(monkeypatch):
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        appmod.crew,
+        'process_customer_query',
+        lambda query, conversation_context=None, requester_role=None: {
+            'response': 'ticket created',
+            'category': 'order',
+            'urgency': 2,
+            'requires_escalation': False,
+            'handoff_notes': '',
+        },
+    )
+
+    requestor_token = _login(client, 'customer@example.com', 'requestor123')
+    admin_token = _login(client, 'admin@company.com', 'admin123')
+
+    req_headers = {'Authorization': f'Bearer {requestor_token}'}
+    admin_headers = {'Authorization': f'Bearer {admin_token}'}
+
+    submit = client.post('/api/v1/tickets', json={'message': 'Need order status'}, headers=req_headers)
+    assert submit.status_code == 200
+    ticket_id = submit.json()['id']
+
+    mine = client.get('/api/v1/tickets/mine', headers=req_headers)
+    assert mine.status_code == 200
+    assert len(mine.json()) >= 1
+
+    forbidden = client.get('/api/v1/users', headers=req_headers)
+    assert forbidden.status_code == 403
+
+    users = client.get('/api/v1/users', headers=admin_headers)
+    assert users.status_code == 200
+    assert any(u['email'] == 'admin@company.com' for u in users.json())
+
+    feedback = client.post(
+        f'/api/v1/tickets/{ticket_id}/feedback',
+        json={'rating': 5, 'comment': 'Great support'},
+        headers=req_headers,
+    )
+    assert feedback.status_code == 200
+    assert feedback.json()['feedback']['rating'] == 5
+
+
+def test_agent_queue_flow(monkeypatch):
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        appmod.crew,
+        'process_customer_query',
+        lambda query, conversation_context=None, requester_role=None: {
+            'response': 'Needs escalation',
+            'category': 'it',
+            'urgency': 4,
+            'requires_escalation': True,
+            'handoff_notes': 'Escalate to human',
+        },
+    )
+
+    requestor_token = _login(client, 'employee@acme.com', 'requestor123')
+    agent_token = _login(client, 'agent1@company.com', 'agent123')
+
+    req_headers = {'Authorization': f'Bearer {requestor_token}'}
+    agent_headers = {'Authorization': f'Bearer {agent_token}'}
+
+    submit = client.post('/api/v1/tickets', json={'message': 'Internal app outage'}, headers=req_headers)
+    assert submit.status_code == 200
+    ticket_id = submit.json()['id']
+
+    queue = client.get('/api/v1/queue', headers=agent_headers)
+    assert queue.status_code == 200
+    assert any(t['id'] == ticket_id for t in queue.json())
+
+    accept = client.post(f'/api/v1/queue/{ticket_id}/accept', headers=agent_headers)
+    assert accept.status_code == 200
+    assert accept.json()['status'] == 'in_progress'
+
+    resolve = client.post(
+        f'/api/v1/queue/{ticket_id}/resolve',
+        json={'resolutionNotes': 'Restarted service and validated health'},
+        headers=agent_headers,
+    )
+    assert resolve.status_code == 200
+    assert resolve.json()['status'] == 'resolved'

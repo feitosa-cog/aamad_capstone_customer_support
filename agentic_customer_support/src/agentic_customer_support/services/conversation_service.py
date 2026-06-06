@@ -37,3 +37,22 @@ class ConversationService:
         messages = [ {'id': m.id, 'sender_type': m.sender_type.name, 'sender_id': m.sender_id, 'content': m.content, 'created_at': m.created_at.isoformat()} for m in conv.messages ]
         session.close()
         return {'id': conv.id, 'user_id': conv.user_id, 'title': conv.title, 'messages': messages}
+
+    def get_user_conversations(self, user_id: str) -> List[Dict[str, Any]]:
+        session = self._Session()
+        conversations = session.query(Conversation).filter(Conversation.user_id == user_id).all()
+        output: List[Dict[str, Any]] = []
+        for conv in conversations:
+            messages = [
+                {
+                    'id': m.id,
+                    'sender_type': m.sender_type.name,
+                    'sender_id': m.sender_id,
+                    'content': m.content,
+                    'created_at': m.created_at.isoformat(),
+                }
+                for m in conv.messages
+            ]
+            output.append({'id': conv.id, 'user_id': conv.user_id, 'title': conv.title, 'messages': messages})
+        session.close()
+        return output

@@ -163,7 +163,12 @@ class AgenticCustomerSupport():
 
     # ==================== PUBLIC INTERFACE ====================
 
-    def process_customer_query(self, query: str, conversation_context: Optional[str] = None) -> dict:
+    def process_customer_query(
+        self,
+        query: str,
+        conversation_context: Optional[str] = None,
+        requester_role: Optional[str] = None,
+    ) -> dict:
         """
         Process a customer query through the support system.
         
@@ -185,13 +190,14 @@ class AgenticCustomerSupport():
         inputs = {
             'customer_query': query,
             'conversation_context': conversation_context or 'No prior context',
+            'requester_role': requester_role or 'REQUESTOR',
             'current_timestamp': str(self._get_timestamp())
         }
 
         try:
             classification_result = self.triage_agent().execute_task(self.triage_task(), inputs)
             classification = self._parse_crew_output(classification_result)
-            category = classification.get('category', 'general')
+            category = self._normalize_category(classification.get('category', 'general'))
 
             if classification.get('requires_escalation'):
                 return self._process_handoff(inputs, classification)
@@ -207,6 +213,7 @@ class AgenticCustomerSupport():
                 'urgency': classification.get('urgency', 3),
                 'requires_escalation': False,
                 'handoff_notes': classification.get('handoff_notes', ''),
+                'agentAssigned': None,
             }
         except Exception as e:
             return {
@@ -214,6 +221,17 @@ class AgenticCustomerSupport():
                 'requires_escalation': True,
                 'response': 'I encountered an issue processing your request. A human agent will assist you shortly.'
             }
+
+    def _normalize_category(self, category: Optional[str]) -> str:
+        normalized = (category or 'general').strip().lower()
+        aliases = {
+            'consumer': 'account',
+            'billing': 'account',
+            'refund': 'returns',
+            'technical': 'it',
+            'incident': 'it',
+        }
+        return aliases.get(normalized, normalized)
 
     def _specialist_task_map(self) -> dict[str, Tuple[Callable[[], BaseAgent], Callable[[], Task]]]:
         return {
@@ -249,10 +267,11 @@ class AgenticCustomerSupport():
     def _merge_classification_with_specialist(self, classification: dict, specialist_output: dict) -> dict:
         return {
             'response': specialist_output.get('response') or classification.get('response') or self._build_general_response(''),
-            'category': specialist_output.get('category', classification.get('category', 'unknown')),
+            'category': self._normalize_category(specialist_output.get('category', classification.get('category', 'unknown'))),
             'urgency': specialist_output.get('urgency', classification.get('urgency', 3)),
             'requires_escalation': specialist_output.get('requires_escalation', classification.get('requires_escalation', False)),
             'handoff_notes': specialist_output.get('handoff_notes', classification.get('handoff_notes', '')),
+            'agentAssigned': specialist_output.get('agentAssigned', classification.get('agentAssigned')),
         }
 
     def _build_general_response(self, query: str) -> str:

@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import os
 import uuid
+from enum import Enum
+from datetime import datetime
 
 from agentic_customer_support.crew import AgenticCustomerSupport
 from agentic_customer_support.services.ticket_service import TicketService
@@ -31,16 +33,123 @@ if USE_MOCK_CREW:
     print('WARNING: OPENAI_API_KEY is not set. Running Crew API in mock fallback mode.')
 
 AUTHORIZED_USERS = {
-    'admin@example.com': {
+    'customer@example.com': {
+        'id': 'requestor-customer-1',
+        'email': 'customer@example.com',
+        'role': 'REQUESTOR',
+        'name': 'Customer Requestor',
+        'password': 'requestor123',
+        'team': None,
+    },
+    'employee@acme.com': {
+        'id': 'requestor-employee-1',
+        'email': 'employee@acme.com',
+        'role': 'REQUESTOR',
+        'name': 'Employee Requestor',
+        'password': 'requestor123',
+        'team': None,
+    },
+    'agent1@company.com': {
+        'id': 'agent-1',
+        'email': 'agent1@company.com',
+        'role': 'REAL_AGENT',
+        'name': 'Tier 2 Agent One',
+        'password': 'agent123',
+        'team': 'tier2_support',
+    },
+    'agent2@company.com': {
+        'id': 'agent-2',
+        'email': 'agent2@company.com',
+        'role': 'REAL_AGENT',
+        'name': 'Tier 2 Agent Two',
+        'password': 'agent123',
+        'team': 'tier2_support',
+    },
+    'admin@company.com': {
         'id': 'admin-1',
-        'email': 'admin@example.com',
-        'role': 'admin',
-        'name': 'Admin User',
-        'password': 'password123',
-    }
+        'email': 'admin@company.com',
+        'role': 'PLATFORM_ADMIN',
+        'name': 'Platform Administrator',
+        'password': 'admin123',
+        'team': 'platform_ops',
+    },
 }
 
 auth_tokens: Dict[str, Dict[str, Any]] = {}
+audit_logs: List[Dict[str, Any]] = []
+system_config: Dict[str, Any] = {
+    'maintenanceMode': False,
+    'maxConcurrentConversations': 100,
+    'analyticsExportTarget': 'databricks',
+}
+
+
+class UserRole(str, Enum):
+    REQUESTOR = 'REQUESTOR'
+    REAL_AGENT = 'REAL_AGENT'
+    PLATFORM_ADMIN = 'PLATFORM_ADMIN'
+
+
+ROLE_PERMISSIONS: Dict[UserRole, List[str]] = {
+    UserRole.REQUESTOR: ['create_ticket', 'view_own_tickets', 'feedback'],
+    UserRole.REAL_AGENT: ['view_queue', 'accept_ticket', 'resolve_ticket', 'escalate'],
+    UserRole.PLATFORM_ADMIN: ['manage_users', 'view_all_tickets', 'system_config', 'audit'],
+}
+
+
+def _log_audit(action: str, actor: Optional[Dict[str, Any]] = None, target: Optional[str] = None, details: Optional[Dict[str, Any]] = None) -> None:
+    audit_logs.append({
+        'id': str(uuid.uuid4()),
+        'timestamp': datetime.utcnow().isoformat(),
+        'action': action,
+        'actor': actor.get('email') if actor else 'system',
+        'target': target,
+        'details': details or {},
+    })
+
+
+def _public_user_record(user: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        'id': user['id'],
+        'email': user['email'],
+        'role': user['role'],
+        'name': user['name'],
+        'team': user.get('team'),
+        'status': 'active',
+        'permissions': ROLE_PERMISSIONS.get(UserRole(user['role']), []),
+    }
+
+
+def _find_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    for user in AUTHORIZED_USERS.values():
+        if user['id'] == user_id:
+            return user
+    return None
+
+
+def _find_ticket_or_404(ticket_id: str) -> Dict[str, Any]:
+    ticket = ticket_service.get_ticket(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail='Ticket not found')
+    return ticket
+
+
+async def get_current_user(authorization: Optional[str] = Header(None, alias='Authorization')) -> Dict[str, Any]:
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Missing or invalid token')
+    token = authorization.split(' ', 1)[1]
+    user = auth_tokens.get(token)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token')
+    return user
+
+
+def require_role(*roles: UserRole):
+    async def _checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+        if current_user.get('role') not in {r.value for r in roles}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Insufficient permissions')
+        return current_user
+    return _checker
 
 
 def _mock_crew_response(query: str, conversation_context: Optional[str] = None) -> Dict[str, Any]:
@@ -140,6 +249,9 @@ class UserOut(BaseModel):
     email: str
     role: str
     name: str
+    team: Optional[str] = None
+    status: str = 'active'
+    permissions: List[str] = []
 
 
 class AuthResponse(BaseModel):
@@ -198,6 +310,55 @@ class AssignTicketIn(BaseModel):
     agentId: str
 
 
+class TicketSubmitIn(BaseModel):
+    message: str
+    userId: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class TicketFeedbackIn(BaseModel):
+    rating: int
+    comment: Optional[str] = None
+
+
+class TicketNotesIn(BaseModel):
+    notes: str
+
+
+class QueueResolveIn(BaseModel):
+    resolutionNotes: str
+
+
+class AdminUserCreateIn(BaseModel):
+    email: str
+    name: str
+    role: UserRole
+    password: str
+    team: Optional[str] = None
+
+
+class AdminUserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    role: Optional[UserRole] = None
+    password: Optional[str] = None
+    team: Optional[str] = None
+
+
+class AdminRoleUpdateIn(BaseModel):
+    role: UserRole
+
+
+class ConfigUpdateIn(BaseModel):
+    maintenanceMode: Optional[bool] = None
+    maxConcurrentConversations: Optional[int] = None
+    analyticsExportTarget: Optional[str] = None
+
+
+class AnalyticsExportIn(BaseModel):
+    destination: Optional[str] = 'databricks'
+    format: Optional[str] = 'json'
+
+
 # ---- Endpoints ----
 @app.post('/auth/login', response_model=AuthResponse)
 async def auth_login(request: LoginRequest):
@@ -211,7 +372,11 @@ async def auth_login(request: LoginRequest):
         'email': user['email'],
         'role': user['role'],
         'name': user['name'],
+        'team': user.get('team'),
+        'permissions': ROLE_PERMISSIONS.get(UserRole(user['role']), []),
     }
+
+    _log_audit('auth.login', actor=auth_tokens[token])
 
     return {
         'token': token,
@@ -244,6 +409,325 @@ async def auth_refresh(authorization: Optional[str] = Header(None, alias='Author
     return {
         'token': new_token,
         'user': user,
+    }
+
+
+@app.post('/api/v1/tickets')
+async def submit_ticket(
+    req: TicketSubmitIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REQUESTOR, UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    user_id = req.userId or current_user['id']
+    conv = conversation_service.create_conversation(user_id=user_id)
+    conversation_service.add_message(
+        conversation_id=conv['id'],
+        sender_type='user',
+        sender_id=user_id,
+        content=req.message,
+        metadata=str(req.metadata) if req.metadata else None,
+    )
+
+    result = crew.process_customer_query(
+        query=req.message,
+        conversation_context=None,
+        requester_role=current_user.get('role'),
+    )
+    if 'error' in result:
+        raise HTTPException(status_code=500, detail=result['error'])
+
+    ticket = ticket_service.create_ticket(conversation_id=conv['id'], user_id=user_id, payload=result)
+    _log_audit('ticket.submit', actor=current_user, target=ticket['id'])
+    return ticket
+
+
+@app.get('/api/v1/tickets/mine')
+async def list_my_tickets(current_user: Dict[str, Any] = Depends(require_role(UserRole.REQUESTOR))):
+    return ticket_service.list_tickets(user_id=current_user['id'])
+
+
+@app.get('/api/v1/tickets/{ticket_id}')
+async def get_ticket_v1(
+    ticket_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REQUESTOR, UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    if current_user['role'] == UserRole.REQUESTOR.value and ticket.get('user_id') != current_user['id']:
+        raise HTTPException(status_code=403, detail='Insufficient permissions')
+    return ticket
+
+
+@app.post('/api/v1/tickets/{ticket_id}/feedback')
+async def submit_feedback(
+    ticket_id: str,
+    feedback: TicketFeedbackIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REQUESTOR)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    if ticket.get('user_id') != current_user['id']:
+        raise HTTPException(status_code=403, detail='Insufficient permissions')
+    updated = ticket_service.update_ticket(ticket_id, {'feedback': feedback.dict()})
+    _log_audit('ticket.feedback', actor=current_user, target=ticket_id, details=feedback.dict())
+    return updated
+
+
+@app.get('/api/v1/queue')
+async def get_queue(current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN))):
+    tickets = ticket_service.list_tickets(status='escalated')
+    _log_audit('queue.view', actor=current_user, details={'count': len(tickets)})
+    return tickets
+
+
+@app.post('/api/v1/queue/{ticket_id}/accept')
+async def accept_queue_ticket(
+    ticket_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    updated = ticket_service.update_ticket(ticket_id, {
+        'status': 'in_progress',
+        'agentAssigned': current_user['id'],
+        'acceptedAt': datetime.utcnow().isoformat(),
+    })
+    _log_audit('queue.accept', actor=current_user, target=ticket.get('id'))
+    return updated
+
+
+@app.post('/api/v1/queue/{ticket_id}/resolve')
+async def resolve_queue_ticket(
+    ticket_id: str,
+    req: QueueResolveIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    updated = ticket_service.update_ticket(ticket_id, {
+        'status': 'resolved',
+        'resolutionNotes': req.resolutionNotes,
+        'resolvedBy': current_user['id'],
+        'resolvedAt': datetime.utcnow().isoformat(),
+    })
+    _log_audit('queue.resolve', actor=current_user, target=ticket.get('id'))
+    return updated
+
+
+@app.get('/api/v1/customers/{customer_id}/history')
+async def customer_history(
+    customer_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    history = conversation_service.get_user_conversations(customer_id)
+    _log_audit('customer.history', actor=current_user, target=customer_id, details={'conversations': len(history)})
+    return {'customerId': customer_id, 'conversations': history}
+
+
+@app.put('/api/v1/tickets/{ticket_id}/notes')
+async def add_ticket_notes(
+    ticket_id: str,
+    req: TicketNotesIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    updated = ticket_service.update_ticket(ticket_id, {'agentNotes': req.notes})
+    _log_audit('ticket.notes', actor=current_user, target=ticket.get('id'))
+    return updated
+
+
+@app.post('/api/v1/tickets/{ticket_id}/escalate')
+async def escalate_ticket_v1(
+    ticket_id: str,
+    escalation: EscalateTicketIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    updated = ticket_service.update_ticket(ticket_id, {
+        'status': 'escalated',
+        'agentNotes': escalation.reason,
+        'escalatedBy': current_user['id'],
+    })
+    _log_audit('ticket.escalate', actor=current_user, target=ticket.get('id'))
+    return updated
+
+
+@app.get('/api/v1/users')
+async def list_users_v1(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN))):
+    users = [_public_user_record(user) for user in AUTHORIZED_USERS.values()]
+    _log_audit('users.list', actor=current_user, details={'count': len(users)})
+    return users
+
+
+@app.post('/api/v1/users', response_model=UserOut)
+async def create_user_v1(
+    req: AdminUserCreateIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN)),
+):
+    if req.email in AUTHORIZED_USERS:
+        raise HTTPException(status_code=400, detail='User already exists')
+
+    new_user = {
+        'id': str(uuid.uuid4()),
+        'email': req.email,
+        'name': req.name,
+        'role': req.role.value,
+        'password': req.password,
+        'team': req.team,
+    }
+    AUTHORIZED_USERS[req.email] = new_user
+    _log_audit('users.create', actor=current_user, target=new_user['id'])
+    return _public_user_record(new_user)
+
+
+@app.put('/api/v1/users/{user_id}', response_model=UserOut)
+async def update_user_v1(
+    user_id: str,
+    req: AdminUserUpdateIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN)),
+):
+    user = _find_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail='User not found')
+
+    updates = req.dict(exclude_none=True)
+    if 'role' in updates:
+        updates['role'] = updates['role'].value
+    user.update(updates)
+    _log_audit('users.update', actor=current_user, target=user_id, details=updates)
+    return _public_user_record(user)
+
+
+@app.delete('/api/v1/users/{user_id}')
+async def delete_user_v1(
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN)),
+):
+    user = _find_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail='User not found')
+    if user['email'] == current_user['email']:
+        raise HTTPException(status_code=400, detail='Cannot delete currently logged-in admin')
+
+    AUTHORIZED_USERS.pop(user['email'])
+    _log_audit('users.delete', actor=current_user, target=user_id)
+    return {'deleted': True, 'id': user_id}
+
+
+@app.get('/api/v1/audit-logs')
+async def get_audit_logs_v1(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN))):
+    return audit_logs[-200:]
+
+
+@app.get('/api/v1/system/health')
+async def get_system_health_v1(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN))):
+    return {
+        'api': 'healthy',
+        'orchestration': 'healthy',
+        'database': 'healthy',
+        'queue': 'healthy',
+        'lastUpdated': datetime.utcnow().isoformat(),
+        'config': system_config,
+    }
+
+
+@app.put('/api/v1/config')
+async def update_config_v1(
+    req: ConfigUpdateIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN)),
+):
+    updates = req.dict(exclude_none=True)
+    system_config.update(updates)
+    _log_audit('config.update', actor=current_user, details=updates)
+    return system_config
+
+
+@app.post('/api/v1/analytics/export')
+async def export_analytics_v1(
+    req: AnalyticsExportIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN)),
+):
+    payload = {
+        'exportedAt': datetime.utcnow().isoformat(),
+        'destination': req.destination,
+        'format': req.format,
+        'recordCount': len(ticket_service.list_tickets()),
+        'status': 'queued',
+    }
+    _log_audit('analytics.export', actor=current_user, details=payload)
+    return payload
+
+
+@app.get('/users')
+async def list_users_compat(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN))):
+    return [_public_user_record(user) for user in AUTHORIZED_USERS.values()]
+
+
+@app.put('/users/{user_id}/role')
+async def update_user_role_compat(
+    user_id: str,
+    update: AdminRoleUpdateIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN)),
+):
+    user = _find_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail='User not found')
+    user['role'] = update.role.value
+    _log_audit('users.role.update', actor=current_user, target=user_id, details={'role': update.role.value})
+    return _public_user_record(user)
+
+
+@app.get('/system-health')
+async def system_health_compat(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN, UserRole.REAL_AGENT))):
+    return {
+        'api': 'healthy',
+        'orchestration': 'healthy',
+        'database': 'healthy',
+        'queue': 'healthy',
+        'lastUpdated': datetime.utcnow().isoformat(),
+    }
+
+
+@app.get('/analytics/dashboard')
+async def analytics_dashboard(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN, UserRole.REAL_AGENT))):
+    tickets = ticket_service.list_tickets()
+    resolved = [t for t in tickets if t.get('status') == 'resolved']
+    escalated = [t for t in tickets if t.get('status') == 'escalated']
+    return {
+        'ticketMetrics': {
+            'total': len(tickets),
+            'resolved': len(resolved),
+            'escalated': len(escalated),
+            'avgResolutionTime': 12,
+        },
+        'agentMetrics': {
+            'activeAgents': len([u for u in AUTHORIZED_USERS.values() if u.get('role') == UserRole.REAL_AGENT.value]),
+            'avgHandleTime': 8,
+            'csat': 4.3,
+        },
+        'trends': {
+            'ticketsPerHour': [1, 2, 3, 2, 4, 5],
+            'resolutionRatePerDay': [70, 72, 75, 74, 78, 79, 81],
+        },
+    }
+
+
+@app.get('/analytics/tickets')
+async def analytics_tickets(current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN, UserRole.REAL_AGENT))):
+    return {
+        'byStatus': {
+            'resolved': len([t for t in ticket_service.list_tickets() if t.get('status') == 'resolved']),
+            'escalated': len([t for t in ticket_service.list_tickets() if t.get('status') == 'escalated']),
+            'in_progress': len([t for t in ticket_service.list_tickets() if t.get('status') == 'in_progress']),
+        }
+    }
+
+
+@app.get('/analytics/agents')
+async def analytics_agents(agentId: Optional[str] = None, current_user: Dict[str, Any] = Depends(require_role(UserRole.PLATFORM_ADMIN, UserRole.REAL_AGENT))):
+    all_tickets = ticket_service.list_tickets()
+    if agentId:
+        all_tickets = [t for t in all_tickets if t.get('agentAssigned') == agentId]
+    return {
+        'agentId': agentId,
+        'ticketsHandled': len(all_tickets),
+        'avgHandleTime': 8,
+        'csat': 4.2,
     }
 
 
