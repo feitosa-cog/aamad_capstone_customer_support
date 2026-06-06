@@ -62,6 +62,14 @@ export const RealAgentConversationPage: React.FC = () => {
   useTicketWebSocket({
     ticketId: ticketId || null,
     onConnectionStateChange: setConnectionState,
+    onTicketMissing: () => {
+      addNotification({
+        type: 'error',
+        message: 'This ticket no longer exists. Returning to the agent queue.',
+        duration: 4000,
+      });
+      navigate('/agent');
+    },
     onMessageCreated: (payload) => {
       if (!ticketId) {
         return;

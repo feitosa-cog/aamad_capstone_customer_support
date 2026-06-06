@@ -18,6 +18,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   const [isOpen, setIsOpen] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
   const [escalationState, setEscalationState] = useState<EscalationState>('OPEN');
+  const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [remoteTyping, setRemoteTyping] = useState(false);
   const [connectionState, setConnectionState] = useState<'connecting' | 'live' | 'offline'>('offline');
   const {
@@ -47,8 +48,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   };
 
   useTicketWebSocket({
-    ticketId: conversationId,
+    ticketId: activeTicketId,
     onConnectionStateChange: setConnectionState,
+    onTicketMissing: () => {
+      setError('This ticket is unavailable or you no longer have access. Send a new message to create a fresh ticket.');
+    },
     onMessageCreated: (payload) => {
       if (!conversationId) {
         return;
@@ -157,6 +161,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
     try {
       const response = await sendMessage(conversationId, text, { source: 'widget' });
+
+      if (response.ticketId) {
+        setActiveTicketId(response.ticketId);
+      }
 
       // Add agent response
       const assistantMessage: ChatMessage = {

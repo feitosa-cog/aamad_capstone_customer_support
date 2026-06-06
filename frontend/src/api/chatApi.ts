@@ -160,7 +160,7 @@ const normalizeResponse = (conversationId: string, response: BackendChatResponse
   senderType: response.sender_type,
   liveAgentOnline: response.live_agent_online,
   confidence: response.confidence || response.payload?.confidence,
-  ticketId: response.ticketId || response.ticket_id,
+  ticketId: response.ticketId || response.ticket_id || response.id,
   agentAssigned: response.agentAssigned || response.agent_assigned,
 });
 
@@ -178,15 +178,17 @@ export const sendMessage = async (
   }
 
   try {
-    const response = await apiClient.post('/chat', {
-      conversationId,
+    // Prefer role-aware v1 endpoint when authenticated.
+    const response = await apiClient.post('/api/v1/tickets', {
       message,
       metadata,
     });
     return normalizeResponse(conversationId, response.data as BackendChatResponse);
   } catch {
     try {
-      const response = await apiClient.post('/api/v1/tickets', {
+      // Compatibility fallback for legacy non-auth chat integrations.
+      const response = await apiClient.post('/chat', {
+      conversationId,
       message,
       metadata,
       });
@@ -209,7 +211,12 @@ export const getConversationHistory = async (
     return (response.data as BackendMessage[])
       .map((item) => normalizeMessage(conversationId, item))
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  } catch {
+  } catch (error: any) {
+    const statusCode = error?.response?.status;
+    if (statusCode === 401 || statusCode === 403) {
+      throw error;
+    }
+
     const response = await apiClient.get(`/chat/${conversationId}`);
     return (response.data as BackendMessage[])
       .map((item) => normalizeMessage(conversationId, item))
@@ -258,15 +265,16 @@ export const createConversation = async (): Promise<{ conversationId: string }> 
   }
 
   try {
-    const response = await apiClient.post('/api/v1/tickets', {
-      subject: 'Support request',
-      channel: 'chat',
-    });
-    return {
-      conversationId: response.data.ticket_id || response.data.id,
-    };
-  } catch {
     const response = await apiClient.post('/chat/conversations');
     return response.data;
+  } catch {
+    // Compatibility fallback if chat conversation endpoint is unavailable.
+    const response = await apiClient.post('/api/v1/tickets', {
+      message: 'Start chat session',
+      metadata: { source: 'chat-bootstrap' },
+    });
+    return {
+      conversationId: response.data.conversation_id || response.data.conversationId || response.data.id,
+    };
   }
 };

@@ -34,6 +34,7 @@ interface UseTicketWebSocketOptions {
   onEscalationRequested?: () => void;
   onEscalationAccepted?: () => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
+  onTicketMissing?: () => void;
 }
 
 const env = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
@@ -76,12 +77,18 @@ export const useTicketWebSocket = ({
   onEscalationRequested,
   onEscalationAccepted,
   onConnectionStateChange,
+  onTicketMissing,
 }: UseTicketWebSocketOptions) => {
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline');
   const hasSyncedLiveRef = useRef(false);
+  const missingTicketRef = useRef(false);
+
+  useEffect(() => {
+    missingTicketRef.current = false;
+  }, [ticketId]);
 
   const syncHistory = useCallback(async () => {
-    if (!ticketId) {
+    if (!ticketId || missingTicketRef.current) {
       return;
     }
 
@@ -96,10 +103,18 @@ export const useTicketWebSocket = ({
           created_at: message.timestamp,
         });
       });
-    } catch {
+    } catch (error: any) {
+      const statusCode = error?.response?.status;
+      if (statusCode === 404 || statusCode === 403) {
+        missingTicketRef.current = true;
+        setConnectionState('offline');
+        onConnectionStateChange?.('offline');
+        onTicketMissing?.();
+        return;
+      }
       // Keep the UI responsive when catch-up fails; the next poll/reconnect will retry.
     }
-  }, [ticketId, onMessageCreated]);
+  }, [ticketId, onMessageCreated, onConnectionStateChange, onTicketMissing]);
 
   useEffect(() => {
     if (!ticketId || useMockApi || typeof WebSocket === 'undefined') {
@@ -193,6 +208,10 @@ export const useTicketWebSocket = ({
 
   useEffect(() => {
     if (useMockApi || !ticketId) {
+      return;
+    }
+
+    if (missingTicketRef.current) {
       return;
     }
 
