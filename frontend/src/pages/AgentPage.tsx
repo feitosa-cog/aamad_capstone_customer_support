@@ -1,10 +1,34 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Header from '../components/Common/Header';
 import ActiveTickets from '../components/Agent/ActiveTickets';
 import ContextPanel from '../components/Agent/ContextPanel';
 import ResponseEditor from '../components/Agent/ResponseEditor';
+import { getQueueTickets } from '../api/ticketApi';
+import { useTicketStore } from '../store/ticketStore';
+import { useUIStore } from '../store/uiStore';
 
 export const AgentPage: React.FC = () => {
+  const { setTickets } = useTicketStore();
+  const { addNotification } = useUIStore();
+
+  useEffect(() => {
+    const loadQueue = async () => {
+      try {
+        const queue = await getQueueTickets();
+        setTickets(queue);
+      } catch (error) {
+        console.error('Failed to load queue:', error);
+        addNotification({
+          type: 'error',
+          message: 'Failed to load agent queue',
+          duration: 4000,
+        });
+      }
+    };
+
+    loadQueue();
+  }, [addNotification, setTickets]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <Header title="Agent Workspace" />

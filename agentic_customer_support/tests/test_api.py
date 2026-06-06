@@ -140,3 +140,60 @@ def test_agent_queue_flow(monkeypatch):
     )
     assert resolve.status_code == 200
     assert resolve.json()['status'] == 'resolved'
+
+
+def test_end_to_end_message_to_resolution_flow(monkeypatch):
+    client = TestClient(app)
+
+    def fake_process(query, conversation_context=None, requester_role=None):
+        return {
+            'response': f'Processed: {query}',
+            'category': 'it',
+            'urgency': 4,
+            'requires_escalation': True,
+            'handoff_notes': 'Escalate to agent queue',
+            'agentAssigned': None,
+        }
+
+    monkeypatch.setattr(appmod.crew, 'process_customer_query', fake_process)
+
+    requestor_token = _login(client, 'employee@acme.com', 'requestor123')
+    agent_token = _login(client, 'agent1@company.com', 'agent123')
+
+    req_headers = {'Authorization': f'Bearer {requestor_token}'}
+    agent_headers = {'Authorization': f'Bearer {agent_token}'}
+
+    submitted = client.post('/api/v1/tickets', json={'message': 'Internal ERP is down'}, headers=req_headers)
+    assert submitted.status_code == 200
+    ticket_id = submitted.json()['id']
+    assert submitted.json()['status'] == 'escalated'
+
+    queue = client.get('/api/v1/queue', headers=agent_headers)
+    assert queue.status_code == 200
+    assert any(ticket['id'] == ticket_id for ticket in queue.json())
+
+    accepted = client.post(f'/api/v1/queue/{ticket_id}/accept', headers=agent_headers)
+    assert accepted.status_code == 200
+    assert accepted.json()['status'] == 'in_progress'
+
+    noted = client.put(
+        f'/api/v1/tickets/{ticket_id}/notes',
+        json={'notes': 'Investigating outage and collecting logs'},
+        headers=agent_headers,
+    )
+    assert noted.status_code == 200
+    assert noted.json()['agentNotes'] == 'Investigating outage and collecting logs'
+
+    resolved = client.post(
+        f'/api/v1/queue/{ticket_id}/resolve',
+        json={'resolutionNotes': 'Service restarted and validated'},
+        headers=agent_headers,
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()['status'] == 'resolved'
+
+    ticket_detail = client.get(f'/api/v1/tickets/{ticket_id}', headers=agent_headers)
+    assert ticket_detail.status_code == 200
+    body = ticket_detail.json()
+    assert body['status'] == 'resolved'
+    assert body['resolutionNotes'] == 'Service restarted and validated'

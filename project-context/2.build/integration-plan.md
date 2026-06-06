@@ -1,8 +1,8 @@
 # Integration Plan: Agentic Customer Support System
 
-**Date**: May 19, 2026
+**Date**: June 5, 2026
 **Owner**: Integration Engineer
-**Status**: In progress
+**Status**: Completed (MVP integration baseline)
 
 ---
 
@@ -19,6 +19,16 @@ This plan describes the integration of the Agentic Customer Support frontend and
 - End-to-end validation of chat messages, ticket creation, escalation, and ticket retrieval
 
 ## 3. Frontend-Backend Integration
+
+### 3.0 Reviewed Feature Deltas (PRD + SAD + Frontend/Backend Plans)
+
+Highlighted new features validated and integrated in this update:
+
+- RBAC alignment for `REQUESTOR`, `REAL_AGENT`, and `PLATFORM_ADMIN`
+- Role-aware route access and UI rendering in frontend
+- Agent queue workflow via role-protected `/api/v1/queue` endpoints
+- Requestor "My Tickets" flow via `/api/v1/tickets/mine`
+- Backend/Frontend ticket payload normalization for consistent rendering
 
 ### 3.1 Current Frontend Expectations
 
@@ -41,6 +51,11 @@ The frontend application expects the following backend endpoints:
 - Added ticket pagination and filtering support
 - Added ticket update, escalate, and assign endpoints
 - Adjusted response format to provide `agentResponse`, `status`, `ticketId`, and `agentAssigned`
+- Added and consumed role-based endpoints for queue operations and notes updates:
+	- `GET /api/v1/queue`
+	- `POST /api/v1/queue/{ticket_id}/accept`
+	- `POST /api/v1/queue/{ticket_id}/resolve`
+	- `PUT /api/v1/tickets/{ticket_id}/notes`
 
 ## 4. API Connection Setup
 
@@ -55,6 +70,7 @@ The frontend application expects the following backend endpoints:
 - `frontend/src/api/client.ts` now defaults to `http://localhost:8000`
 - Authentication headers are passed automatically from localStorage when present
 - Backend is configured with permissive CORS for development use
+- Frontend ticket API now normalizes backend snake_case and payload-enriched ticket shapes into UI-consumable camelCase fields
 
 ## 5. External Service Integrations
 
@@ -91,7 +107,7 @@ The frontend application expects the following backend endpoints:
 
 - Run existing backend tests with `pytest` in `agentic_customer_support`
 - Confirm API endpoint surface and ticket flows are working
-- Add coverage for chat conversation creation and ticket listing
+- Added explicit end-to-end API integration coverage for requestor-to-agent flow (submit -> queue -> accept -> notes -> resolve)
 
 ### 7.2 Manual Integration Validation
 
@@ -121,8 +137,13 @@ The frontend application expects the following backend endpoints:
 | Add ticket pagination and filters | Completed | Supports `page`, `limit`, `status` |
 | Add ticket update/escalation/assignment endpoints | Completed | Backend supports full ticket lifecycle API |
 | Add backend CORS for local dev | Completed | Permissive CORS enabled |
+| Normalize backend ticket payloads in frontend | Completed | `ticketApi` now maps snake_case and payload fields to UI contract |
+| Wire requestor "My Tickets" route and data source | Completed | `/dashboard` now role-allowed for requestor and uses `/api/v1/tickets/mine` |
+| Wire agent queue actions to RBAC endpoints | Completed | Agent workspace uses `/api/v1/queue`, accept, resolve, and notes endpoints |
+| Add end-to-end API flow test | Completed | New backend test covers submit -> queue -> accept -> notes -> resolve |
 | Document integration plan | Completed | Created `project-context/2.build/integration-plan.md` |
-| Run backend integration tests | In progress | `pytest` should be executed next |
+| Run backend integration tests | Completed | `12 passed` |
+| Run frontend validation | Completed | `npm test` passed and production build succeeded |
 
 ## 9. Progress Summary
 
@@ -130,15 +151,16 @@ The frontend application expects the following backend endpoints:
 - Backend now supports the complete chat and ticket endpoint surface required by the React UI
 - ServiceNow escalation flow is available via the mocked ServiceNow service
 - Local integration configuration and CORS are in place for end-to-end testing
+- RBAC and role-specific workflows are fully wired for requestor, agent, and admin MVP paths
+- Agent workspace now drives role-protected queue lifecycle endpoints end-to-end
 
 ---
 
 ## 10. Next Steps
 
-1. Run `pytest` to validate backend endpoint behavior
-2. Start frontend and backend together and verify chat widget flow
-3. Confirm ticket dashboard and escalation actions operate end-to-end
-4. Document any integration issues in `project-context/2.build/integration-plan.md`
+1. Add browser-level E2E tests (Playwright/Cypress) for role journeys and UI assertions
+2. Replace in-memory auth/ticket stores with persistent data layer for non-MVP environments
+3. Add CI gates for frontend build + frontend tests + backend tests on integration branch
 
 ---
 
@@ -159,3 +181,17 @@ curl http://127.0.0.1:8000/tickets
 - Observations: Initial lack of backend activity during user's first run was due to frontend running in mock mode (`VITE_USE_MOCK_API=true`) — switching that to `false` caused network requests to reach the backend as expected.
 
 **Status:** Verification completed (E2E smoke test passed with mock LLM fallback). Recommend opening browser DevTools to inspect network calls during manual UI validation.
+
+### Verification Log (June 5, 2026)
+
+- Action: Reviewed PRD, SAD, frontend plan, and backend plan with focus on highlighted RBAC features and role-based workflows.
+- Action: Updated frontend integration layer to normalize backend ticket payloads and field naming differences.
+- Action: Wired requestor dashboard access to role-appropriate "My Tickets" behavior.
+- Action: Wired agent workspace to role-protected queue endpoints for queue load, accept, notes, and resolve operations.
+- Action: Added backend end-to-end API flow test in `agentic_customer_support/tests/test_api.py`.
+- Validation:
+	- Frontend tests: `npm test -- --run` -> **3 files, 9 tests passed**
+	- Frontend build: `npm run build` -> **passed**
+	- Backend tests: `pytest tests -q` -> **12 passed**
+
+**Status:** Integration plan execution completed for MVP baseline. End-to-end data flow is validated at API and app integration level with role-based workflows.

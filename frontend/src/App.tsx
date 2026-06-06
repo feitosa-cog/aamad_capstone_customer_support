@@ -82,7 +82,7 @@ export const App: React.FC = () => {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute allowedRoles={['PLATFORM_ADMIN', 'REAL_AGENT']}>
+              <ProtectedRoute allowedRoles={['REQUESTOR', 'PLATFORM_ADMIN', 'REAL_AGENT']}>
                 <DashboardPage />
               </ProtectedRoute>
             }

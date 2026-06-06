@@ -6,6 +6,7 @@ export const ActiveTickets: React.FC = () => {
   const { tickets, selectedTicket, selectTicket } = useTicketStore();
 
   const openTickets = tickets.filter((t) => t.status === 'open');
+  const inProgressTickets = tickets.filter((t) => t.status === 'in_progress');
   const escalatedTickets = tickets.filter((t) => t.status === 'escalated');
 
   return (
@@ -70,7 +71,36 @@ export const ActiveTickets: React.FC = () => {
           ))}
         </div>
 
-        {openTickets.length === 0 && escalatedTickets.length === 0 && (
+        {inProgressTickets.length > 0 && (
+          <div className="mt-4 border-t border-gray-200 pt-4">
+            <h3 className="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-2">
+              <Clock size={16} />
+              In Progress ({inProgressTickets.length})
+            </h3>
+            <div className="space-y-1">
+              {inProgressTickets.map((ticket) => (
+                <button
+                  key={ticket.id}
+                  onClick={() => selectTicket(ticket)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition ${
+                    selectedTicket?.id === ticket.id
+                      ? 'bg-blue-100 text-blue-900 font-semibold'
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <div className="font-medium truncate">
+                    {ticket.category} - {ticket.customerId}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {new Date(ticket.updatedAt).toLocaleTimeString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {openTickets.length === 0 && escalatedTickets.length === 0 && inProgressTickets.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             <CheckCircle2 size={32} className="mx-auto mb-2 text-green-500" />
             <p className="text-sm">No pending tickets</p>

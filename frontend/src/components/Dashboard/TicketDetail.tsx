@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Copy, Download } from 'lucide-react';
 import { useTicketStore } from '../../store/ticketStore';
-import { updateTicket } from '../../api/ticketApi';
+import { addTicketNotes, updateTicket } from '../../api/ticketApi';
 import clsx from 'clsx';
 
 export const TicketDetail: React.FC = () => {
@@ -26,7 +26,7 @@ export const TicketDetail: React.FC = () => {
   const handleSaveNotes = async () => {
     setIsLoading(true);
     try {
-      const updated = await updateTicket(selectedTicket.id, { agentNotes: notes });
+      const updated = await addTicketNotes(selectedTicket.id, notes);
       updateStore(selectedTicket.id, updated);
     } catch (error) {
       console.error('Failed to save notes:', error);
@@ -81,6 +81,7 @@ export const TicketDetail: React.FC = () => {
               <span className={clsx('px-2 py-1 rounded-full text-xs font-semibold', {
                 'bg-green-100 text-green-800': selectedTicket.status === 'resolved',
                 'bg-yellow-100 text-yellow-800': selectedTicket.status === 'open',
+                'bg-blue-100 text-blue-800': selectedTicket.status === 'in_progress',
                 'bg-red-100 text-red-800': selectedTicket.status === 'escalated',
               })}>
                 {selectedTicket.status}

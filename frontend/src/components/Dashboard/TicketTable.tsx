@@ -1,16 +1,24 @@
 import React, { useEffect } from 'react';
 import { SkeletonTable } from '../Common/Skeleton';
 import { useTicketStore } from '../../store/ticketStore';
-import { getTickets } from '../../api/ticketApi';
+import { getMyTickets, getTickets } from '../../api/ticketApi';
+import { useAuthStore } from '../../store/authStore';
 import clsx from 'clsx';
 
 export const TicketTable: React.FC = () => {
   const { tickets, isLoading, filters, setTickets, selectTicket, setLoading } = useTicketStore();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     const fetchTickets = async () => {
       setLoading(true);
       try {
+        if (user?.role === 'REQUESTOR') {
+          const myTickets = await getMyTickets();
+          setTickets(myTickets);
+          return;
+        }
+
         const response = await getTickets(filters.page, filters.limit, filters.status);
         setTickets(response.data);
       } catch (error) {
@@ -21,7 +29,7 @@ export const TicketTable: React.FC = () => {
     };
 
     fetchTickets();
-  }, [filters, setTickets, setLoading]);
+  }, [filters, setTickets, setLoading, user?.role]);
 
   if (isLoading) {
     return <SkeletonTable />;
@@ -56,6 +64,7 @@ export const TicketTable: React.FC = () => {
                   className={clsx('px-2 py-1 rounded-full text-xs font-semibold', {
                     'bg-green-100 text-green-800': ticket.status === 'resolved',
                     'bg-yellow-100 text-yellow-800': ticket.status === 'open',
+                    'bg-blue-100 text-blue-800': ticket.status === 'in_progress',
                     'bg-red-100 text-red-800': ticket.status === 'escalated',
                   })}
                 >

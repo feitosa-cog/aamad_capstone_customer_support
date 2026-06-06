@@ -12,7 +12,7 @@ export interface Ticket {
   id: string;
   customerId: string;
   conversationId: string;
-  status: 'open' | 'resolved' | 'escalated';
+  status: 'open' | 'in_progress' | 'resolved' | 'escalated';
   createdAt: string;
   updatedAt: string;
   transcript: Array<{
@@ -26,6 +26,67 @@ export interface Ticket {
   resolutionNotes?: string;
   agentAssigned?: string;
 }
+
+type BackendTicket = {
+  id: string;
+  customerId?: string;
+  user_id?: string;
+  userId?: string;
+  conversationId?: string;
+  conversation_id?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  transcript?: Array<{
+    role?: string;
+    sender_type?: string;
+    content?: string;
+    timestamp?: string;
+    created_at?: string;
+  }>;
+  agentNotes?: string;
+  priority?: number;
+  category?: string;
+  resolutionNotes?: string;
+  agentAssigned?: string;
+  payload?: {
+    category?: string;
+    urgency?: number;
+    handoff_notes?: string;
+    resolutionNotes?: string;
+    agentAssigned?: string;
+  };
+};
+
+const normalizeStatus = (status?: string): Ticket['status'] => {
+  if (status === 'resolved' || status === 'escalated' || status === 'in_progress' || status === 'open') {
+    return status;
+  }
+
+  return 'open';
+};
+
+const normalizeTicket = (raw: BackendTicket): Ticket => {
+  const now = new Date().toISOString();
+  return {
+    id: raw.id,
+    customerId: raw.customerId || raw.user_id || raw.userId || 'unknown',
+    conversationId: raw.conversationId || raw.conversation_id || '',
+    status: normalizeStatus(raw.status),
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || raw.createdAt || now,
+    transcript: (raw.transcript || []).map((message) => ({
+      role: message.role || message.sender_type || 'system',
+      content: message.content || '',
+      timestamp: message.timestamp || message.created_at || now,
+    })),
+    agentNotes: raw.agentNotes || raw.payload?.handoff_notes || '',
+    priority: (raw.priority || raw.payload?.urgency || 3) as 1 | 2 | 3 | 4 | 5,
+    category: raw.category || raw.payload?.category || 'general',
+    resolutionNotes: raw.resolutionNotes || raw.payload?.resolutionNotes,
+    agentAssigned: raw.agentAssigned || raw.payload?.agentAssigned,
+  };
+};
 
 export interface TicketListResponse {
   data: Ticket[];
@@ -44,7 +105,30 @@ export const getTickets = async (page = 1, limit = 20, status?: string): Promise
   const response = await apiClient.get('/tickets', {
     params: { page, limit, status },
   });
-  return response.data;
+  return {
+    data: (response.data.data as BackendTicket[]).map(normalizeTicket),
+    pagination: response.data.pagination,
+  };
+};
+
+export const getMyTickets = async (): Promise<Ticket[]> => {
+  if (useMockApi) {
+    const response = await mockGetTickets(1, 100);
+    return response.data;
+  }
+
+  const response = await apiClient.get('/api/v1/tickets/mine');
+  return (response.data as BackendTicket[]).map(normalizeTicket);
+};
+
+export const getQueueTickets = async (): Promise<Ticket[]> => {
+  if (useMockApi) {
+    const response = await mockGetTickets(1, 100, 'escalated');
+    return response.data;
+  }
+
+  const response = await apiClient.get('/api/v1/queue');
+  return (response.data as BackendTicket[]).map(normalizeTicket);
 };
 
 export const getTicketDetail = async (ticketId: string): Promise<Ticket> => {
@@ -53,7 +137,7 @@ export const getTicketDetail = async (ticketId: string): Promise<Ticket> => {
   }
 
   const response = await apiClient.get(`/tickets/${ticketId}`);
-  return response.data;
+  return normalizeTicket(response.data as BackendTicket);
 };
 
 export const updateTicket = async (ticketId: string, updates: Partial<Ticket>): Promise<Ticket> => {
@@ -62,7 +146,7 @@ export const updateTicket = async (ticketId: string, updates: Partial<Ticket>): 
   }
 
   const response = await apiClient.patch(`/tickets/${ticketId}`, updates);
-  return response.data;
+  return normalizeTicket(response.data as BackendTicket);
 };
 
 export const escalateTicket = async (ticketId: string, reason: string): Promise<Ticket> => {
@@ -71,7 +155,7 @@ export const escalateTicket = async (ticketId: string, reason: string): Promise<
   }
 
   const response = await apiClient.post(`/tickets/${ticketId}/escalate`, { reason });
-  return response.data;
+  return normalizeTicket(response.data as BackendTicket);
 };
 
 export const assignTicket = async (ticketId: string, agentId: string): Promise<Ticket> => {
@@ -80,5 +164,36 @@ export const assignTicket = async (ticketId: string, agentId: string): Promise<T
   }
 
   const response = await apiClient.post(`/tickets/${ticketId}/assign`, { agentId });
-  return response.data;
+  return normalizeTicket(response.data as BackendTicket);
+};
+
+export const acceptQueueTicket = async (ticketId: string): Promise<Ticket> => {
+  if (useMockApi) {
+    return mockUpdateTicket(ticketId, { status: 'in_progress' });
+  }
+
+  const response = await apiClient.post(`/api/v1/queue/${ticketId}/accept`);
+  return normalizeTicket(response.data as BackendTicket);
+};
+
+export const resolveQueueTicket = async (ticketId: string, resolutionNotes: string): Promise<Ticket> => {
+  if (useMockApi) {
+    return mockUpdateTicket(ticketId, { status: 'resolved', resolutionNotes });
+  }
+
+  const response = await apiClient.post(`/api/v1/queue/${ticketId}/resolve`, {
+    resolutionNotes,
+  });
+  return normalizeTicket(response.data as BackendTicket);
+};
+
+export const addTicketNotes = async (ticketId: string, notes: string): Promise<Ticket> => {
+  if (useMockApi) {
+    return mockUpdateTicket(ticketId, { agentNotes: notes });
+  }
+
+  const response = await apiClient.put(`/api/v1/tickets/${ticketId}/notes`, {
+    notes,
+  });
+  return normalizeTicket(response.data as BackendTicket);
 };
