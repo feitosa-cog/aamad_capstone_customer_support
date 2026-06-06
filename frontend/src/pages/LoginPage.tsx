@@ -2,10 +2,17 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { login } from '../api/authApi';
+import { getRoleHomeRoute } from '../auth/roles';
+
+const demoUsers = [
+  { label: 'Requestor', email: 'customer@example.com', password: 'requestor123' },
+  { label: 'Real Agent', email: 'agent1@company.com', password: 'agent123' },
+  { label: 'Platform Admin', email: 'admin@company.com', password: 'admin123' },
+];
 
 export const LoginPage: React.FC = () => {
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('customer@example.com');
+  const [password, setPassword] = useState('requestor123');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -19,7 +26,7 @@ export const LoginPage: React.FC = () => {
     try {
       const response = await login(email, password);
       setAuth(response.token, response.user);
-      navigate('/dashboard');
+      navigate(getRoleHomeRoute(response.user.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -32,7 +39,26 @@ export const LoginPage: React.FC = () => {
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Agentic Support</h1>
-          <p className="text-gray-600 mt-2">Admin Dashboard</p>
+          <p className="text-gray-600 mt-2">Role-Based MVP Access</p>
+        </div>
+
+        <div className="mb-4">
+          <p className="text-sm font-medium text-gray-700 mb-2">Quick Demo Accounts</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {demoUsers.map((demo) => (
+              <button
+                key={demo.email}
+                type="button"
+                onClick={() => {
+                  setEmail(demo.email);
+                  setPassword(demo.password);
+                }}
+                className="px-3 py-2 text-xs bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition"
+              >
+                {demo.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -78,7 +104,7 @@ export const LoginPage: React.FC = () => {
         </form>
 
         <p className="text-center text-xs text-gray-500 mt-6">
-          Demo Credentials: admin@example.com / password123
+          Use the quick buttons above to populate demo credentials
         </p>
       </div>
     </div>

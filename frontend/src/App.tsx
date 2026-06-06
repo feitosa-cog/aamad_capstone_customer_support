@@ -10,13 +10,22 @@ import ChatPage from './pages/ChatPage';
 import DashboardPage from './pages/DashboardPage';
 import AgentPage from './pages/AgentPage';
 import SettingsPage from './pages/SettingsPage';
+import AdminPage from './pages/AdminPage';
+import { getRoleHomeRoute, type UserRole } from './auth/roles';
 import './index.css';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { token } = useAuthStore();
+const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: UserRole[] }> = ({
+  children,
+  allowedRoles,
+}) => {
+  const { token, user } = useAuthStore();
   
   if (!token) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return <Navigate to={getRoleHomeRoute(user.role)} replace />;
   }
 
   return (
@@ -30,33 +39,41 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 export const App: React.FC = () => {
-  const { token, setLoading } = useAuthStore();
+  const { token, user, setUser, logout, setLoading } = useAuthStore();
 
   useEffect(() => {
     const checkAuth = async () => {
       if (token) {
         try {
-          await verifyToken();
+          const result = await verifyToken();
+          if (result.valid && result.user) {
+            setUser(result.user);
+          } else {
+            logout();
+          }
         } catch (error) {
           console.error('Token verification failed:', error);
+          logout();
         }
       }
       setLoading(false);
     };
 
     checkAuth();
-  }, [token, setLoading]);
+  }, [token, setLoading, setUser, logout]);
+
+  const homeRoute = getRoleHomeRoute(user?.role);
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           
           <Route
             path="/chat"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['REQUESTOR']}>
                 <ChatPage />
               </ProtectedRoute>
             }
@@ -65,7 +82,7 @@ export const App: React.FC = () => {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['PLATFORM_ADMIN', 'REAL_AGENT']}>
                 <DashboardPage />
               </ProtectedRoute>
             }
@@ -74,7 +91,7 @@ export const App: React.FC = () => {
           <Route
             path="/agent"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['REAL_AGENT', 'PLATFORM_ADMIN']}>
                 <AgentPage />
               </ProtectedRoute>
             }
@@ -89,8 +106,17 @@ export const App: React.FC = () => {
             }
           />
 
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={['PLATFORM_ADMIN']}>
+                <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/" element={<Navigate to={homeRoute} replace />} />
+          <Route path="*" element={<Navigate to={homeRoute} replace />} />
         </Routes>
         
         <NotificationList />

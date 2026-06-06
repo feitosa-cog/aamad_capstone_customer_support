@@ -1,4 +1,4 @@
-type UserRole = 'admin' | 'agent' | 'viewer';
+type UserRole = 'REQUESTOR' | 'REAL_AGENT' | 'PLATFORM_ADMIN';
 
 type ConversationMessage = {
   id: string;
@@ -29,12 +29,76 @@ const delay = (ms = 400) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const generateId = (prefix = 'id') => `${prefix}_${Math.random().toString(36).substring(2, 10)}`;
 
-const mockUser: { id: string; email: string; role: UserRole; name: string } = {
-  id: 'user-1',
-  email: 'admin@example.com',
-  role: 'admin',
-  name: 'Admin User',
+type MockUser = { id: string; email: string; role: UserRole; name: string; password: string };
+
+const mockUsers: MockUser[] = [
+  {
+    id: 'req-customer-1',
+    email: 'customer@example.com',
+    role: 'REQUESTOR',
+    name: 'Customer Requestor',
+    password: 'requestor123',
+  },
+  {
+    id: 'req-employee-1',
+    email: 'employee@acme.com',
+    role: 'REQUESTOR',
+    name: 'Employee Requestor',
+    password: 'requestor123',
+  },
+  {
+    id: 'agent-1',
+    email: 'agent1@company.com',
+    role: 'REAL_AGENT',
+    name: 'Agent One',
+    password: 'agent123',
+  },
+  {
+    id: 'agent-2',
+    email: 'agent2@company.com',
+    role: 'REAL_AGENT',
+    name: 'Agent Two',
+    password: 'agent123',
+  },
+  {
+    id: 'admin-1',
+    email: 'admin@company.com',
+    role: 'PLATFORM_ADMIN',
+    name: 'Platform Administrator',
+    password: 'admin123',
+  },
+  {
+    id: 'admin-legacy-1',
+    email: 'admin@example.com',
+    role: 'PLATFORM_ADMIN',
+    name: 'Admin User',
+    password: 'password123',
+  },
+];
+
+const getSanitizedUser = (user: MockUser) => ({
+  id: user.id,
+  email: user.email,
+  role: user.role,
+  name: user.name,
+});
+
+const getCurrentUser = () => {
+  const email = localStorage.getItem('mockAuthEmail');
+  if (!email) {
+    return null;
+  }
+
+  return mockUsers.find((user) => user.email === email) || null;
 };
+
+const adminUsers: Array<{ id: string; email: string; name: string; role: UserRole; status: 'active' | 'disabled' }> = [
+  { id: 'u-1', email: 'customer@example.com', name: 'Customer Requestor', role: 'REQUESTOR', status: 'active' },
+  { id: 'u-2', email: 'employee@acme.com', name: 'Employee Requestor', role: 'REQUESTOR', status: 'active' },
+  { id: 'u-3', email: 'agent1@company.com', name: 'Agent One', role: 'REAL_AGENT', status: 'active' },
+  { id: 'u-4', email: 'agent2@company.com', name: 'Agent Two', role: 'REAL_AGENT', status: 'active' },
+  { id: 'u-5', email: 'admin@company.com', name: 'Platform Administrator', role: 'PLATFORM_ADMIN', status: 'active' },
+];
 
 let currentConversationId = generateId('conv');
 const conversations: Record<string, ConversationMessage[]> = {};
@@ -132,12 +196,15 @@ const tickets: MockTicket[] = [
 export const login = async (email: string, password: string) => {
   await delay();
 
-  if (email === 'admin@example.com' && password === 'password123') {
+  const user = mockUsers.find((candidate) => candidate.email === email && candidate.password === password);
+
+  if (user) {
     const token = 'mock-jwt-token-12345';
     localStorage.setItem('authToken', token);
+    localStorage.setItem('mockAuthEmail', user.email);
     return {
       token,
-      user: mockUser,
+      user: getSanitizedUser(user),
     };
   }
 
@@ -147,23 +214,26 @@ export const login = async (email: string, password: string) => {
 export const logout = async () => {
   await delay(200);
   localStorage.removeItem('authToken');
+  localStorage.removeItem('mockAuthEmail');
   return { message: 'Logged out' };
 };
 
 export const verifyToken = async (): Promise<{ valid: boolean; user?: { id: string; email: string; role: UserRole; name: string } }> => {
   await delay();
   const token = localStorage.getItem('authToken');
-  if (token === 'mock-jwt-token-12345') {
-    return { valid: true, user: mockUser };
+  const user = getCurrentUser();
+  if (token === 'mock-jwt-token-12345' && user) {
+    return { valid: true, user: getSanitizedUser(user) };
   }
   return { valid: false };
 };
 
 export const refreshToken = async (): Promise<{ token: string; user: { id: string; email: string; role: UserRole; name: string } }> => {
   await delay();
+  const user = getCurrentUser() || mockUsers[4];
   const token = 'mock-jwt-token-12345';
   localStorage.setItem('authToken', token);
-  return { token, user: mockUser };
+  return { token, user: getSanitizedUser(user) };
 };
 
 export const createConversation = async () => {
@@ -307,5 +377,32 @@ export const getAgentMetrics = async (agentId?: string) => {
     activeAgents: 5,
     avgHandleTime: 12,
     csat: 4.7,
+  };
+};
+
+export const getUsers = async () => {
+  await delay();
+  return [...adminUsers];
+};
+
+export const updateUserRole = async (userId: string, role: UserRole) => {
+  await delay();
+  const user = adminUsers.find((entry) => entry.id === userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  user.role = role;
+  return { ...user };
+};
+
+export const getSystemHealth = async () => {
+  await delay();
+  return {
+    api: 'healthy' as const,
+    orchestration: 'healthy' as const,
+    database: 'degraded' as const,
+    queue: 'healthy' as const,
+    lastUpdated: new Date().toISOString(),
   };
 };

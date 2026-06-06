@@ -5,21 +5,26 @@ import {
   BarChart3,
   Users,
   Settings,
+  Shield,
   X,
 } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 import clsx from 'clsx';
 
 export const Sidebar: React.FC = () => {
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const { user } = useAuthStore();
   const location = useLocation();
 
   const menuItems = [
-    { icon: MessageSquare, label: 'Chat', href: '/chat' },
-    { icon: BarChart3, label: 'Dashboard', href: '/dashboard' },
-    { icon: Users, label: 'Agents', href: '/agent' },
-    { icon: Settings, label: 'Settings', href: '/settings' },
-  ];
+    { icon: MessageSquare, label: 'Chat', href: '/chat', roles: ['REQUESTOR'] },
+    { icon: BarChart3, label: 'My Tickets', href: '/dashboard', roles: ['REQUESTOR'] },
+    { icon: BarChart3, label: 'Dashboard', href: '/dashboard', roles: ['REAL_AGENT', 'PLATFORM_ADMIN'] },
+    { icon: Users, label: 'Agent Workspace', href: '/agent', roles: ['REAL_AGENT', 'PLATFORM_ADMIN'] },
+    { icon: Shield, label: 'Admin Console', href: '/admin', roles: ['PLATFORM_ADMIN'] },
+    { icon: Settings, label: 'Settings', href: '/settings', roles: ['REQUESTOR', 'REAL_AGENT', 'PLATFORM_ADMIN'] },
+  ].filter((item) => !user || item.roles.includes(user.role));
 
   return (
     <>

@@ -3,6 +3,7 @@ import { LogOut, Menu } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { useMockApi } from '../../api/apiConfig';
+import { getRoleLabel } from '../../auth/roles';
 
 export interface HeaderProps {
   title: string;
@@ -32,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
       <div className="flex items-center gap-4">
         <div className="text-right">
           <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-          <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+          <p className="text-xs text-gray-500">{getRoleLabel(user?.role)}</p>
           {useMockApi && (
             <span className="inline-flex items-center px-2 py-1 mt-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.18em] bg-yellow-100 text-yellow-800">
               Mock API

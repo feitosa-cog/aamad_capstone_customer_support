@@ -979,6 +979,154 @@ All MVP core components have been implemented and are production-ready.
 - ProtectedRoute — Authorization wrapper
 - Auto-redirects and navigation
 
+---
+
+## 20. Frontend Review and Progress Update (June 5, 2026)
+
+### 20.1 PRD/SAD Review Coverage
+
+This update reviewed and aligned implementation against:
+
+- PRD: `project-context/1.define/prd.md`
+- SAD: `project-context/2.build/sad.md`
+
+Highlighted feature focus from SAD v2.0:
+
+- Role-based access control (RBAC) with mocked personas
+- Role-aware frontend rendering and route segregation
+- Requestor, Real Agent, and Platform Admin experience separation
+
+### 20.2 Implemented in Frontend (This Iteration)
+
+| Area | Implementation | Status |
+|------|----------------|--------|
+| Mocked role credentials | Added Requestor, Real Agent, Platform Admin demo users in auth mock | ✅ Complete |
+| Role model | Standardized role values to `REQUESTOR`, `REAL_AGENT`, `PLATFORM_ADMIN` | ✅ Complete |
+| Login UX | Added quick account selectors and role-based post-login redirect | ✅ Complete |
+| Route authorization | Added role-aware protected routes for chat, dashboard, and agent workspace | ✅ Complete |
+| Role-based navigation | Sidebar now renders menu items by role | ✅ Complete |
+| Session consistency | Persisted authenticated user and synced user on token verification | ✅ Complete |
+| Header identity | Human-friendly role label rendering | ✅ Complete |
+| Dashboard role view | Requestor sees "My Tickets" flow; analytics reserved for non-requestor roles | ✅ Complete |
+
+### 20.3 User Interaction Flows (Current)
+
+1. Requestor flow:
+  - Login with Requestor credentials
+  - Redirect to `/chat`
+  - Access Chat and My Tickets views
+
+2. Real Agent flow:
+  - Login with Agent credentials
+  - Redirect to `/agent`
+  - Access Agent Workspace, Dashboard, and Settings
+
+3. Platform Admin flow:
+  - Login with Admin credentials
+  - Redirect to `/dashboard`
+  - Access Dashboard, Agent Workspace, and Settings
+
+### 20.4 API Integration Points (Auth/RBAC)
+
+- `POST /api/auth/login` — frontend consumes role payload and normalizes for RBAC
+- `GET /api/auth/verify` — token verification updates user in store
+- `POST /api/auth/refresh` — supported and role-normalized
+
+### 20.5 Status Tracking
+
+| Workstream | Previous | Current |
+|------------|----------|---------|
+| Authentication UI | Basic single-admin demo | Multi-role demo login |
+| Authorization | Token-only protection | Token + role-based route access |
+| Navigation | Static links for all users | Dynamic by role |
+| Role UX parity with SAD | Partial | Implemented for MVP |
+
+### 20.6 Validation
+
+- Frontend build completed successfully after RBAC updates:
+  - Command: `npm run build`
+  - Result: TypeScript compile and Vite production build passed
+
+### 20.7 Remaining Next Tasks
+
+- Add explicit requestor-only ticket endpoint usage (`/tickets/mine`) once backend route is available
+- Add role-specific end-to-end tests for route guards and menu visibility
+
+### 20.8 Admin Console Progress (June 5, 2026)
+
+Implemented SAD-aligned admin features in the frontend as admin-only UI and routes.
+
+| Feature | Implementation | Status |
+|---------|----------------|--------|
+| Admin route | Added `/admin` route guarded for `PLATFORM_ADMIN` only | ✅ Complete |
+| Admin navigation | Added sidebar entry visible only to Platform Admin | ✅ Complete |
+| User Management UI | Added user table with role reassignment controls | ✅ Complete |
+| System Health UI | Added service health cards with status badges | ✅ Complete |
+| Admin API layer | Added `adminApi.ts` with mock/real endpoint support | ✅ Complete |
+| Mock data support | Added mocked users and health endpoint handlers | ✅ Complete |
+
+Implemented files:
+
+- `frontend/src/pages/AdminPage.tsx`
+- `frontend/src/components/Admin/UserManagement.tsx`
+- `frontend/src/components/Admin/SystemHealth.tsx`
+- `frontend/src/api/adminApi.ts`
+- `frontend/src/api/mockApi.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/components/Common/Sidebar.tsx`
+
+Validation:
+
+- `npm run build` passed successfully after admin updates.
+
+### 20.9 RBAC Test Progress (June 5, 2026)
+
+Implemented frontend RBAC coverage with Vitest + Testing Library.
+
+| Test Area | Coverage | Status |
+|-----------|----------|--------|
+| Role home route mapping | `REQUESTOR` -> `/chat`, `REAL_AGENT` -> `/agent`, `PLATFORM_ADMIN` -> `/dashboard` | ✅ Complete |
+| Sidebar role visibility | Role-based menu rendering for requestor, real agent, admin | ✅ Complete |
+| Route guard behavior | Unauthenticated redirect, requestor blocked from `/admin`, admin access to `/admin` | ✅ Complete |
+| Test runtime setup | Added jsdom setup and DOM shim for `scrollIntoView` | ✅ Complete |
+| Storage compatibility | Safe storage access in auth store and API client for test runtime | ✅ Complete |
+
+New/updated testing files:
+
+- `frontend/src/test/setup.ts`
+- `frontend/src/auth/roles.test.ts`
+- `frontend/src/components/Common/Sidebar.test.tsx`
+- `frontend/src/App.rbac.test.tsx`
+- `frontend/vite.config.ts`
+
+Validation results:
+
+- `npm run test -- --run` → **3 test files, 9 tests passed**
+- `npm run build` → **passed**
+
+### 20.10 Test Output Stabilization (June 5, 2026)
+
+Reduced non-actionable test noise to keep QA signal clear.
+
+| Area | Change | Status |
+|------|--------|--------|
+| Test API behavior | Force mock API usage in test mode (`MODE=test`) | ✅ Complete |
+| Router warnings | Enabled React Router future flags in app router and test memory router | ✅ Complete |
+| Runtime compatibility | Added safe storage usage for environments with partial `localStorage` support | ✅ Complete |
+
+Updated files:
+
+- `frontend/src/api/apiConfig.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/components/Common/Sidebar.test.tsx`
+- `frontend/src/store/authStore.ts`
+- `frontend/src/api/client.ts`
+
+Validation:
+
+- `npm run test -- --run` → **3 test files, 9 tests passed**
+- `npm run build` → **passed**
+
 **Dashboard Components**
 - TicketTable — Sortable ticket list with status indicators
 - TicketDetail — Full ticket view with notes editor
