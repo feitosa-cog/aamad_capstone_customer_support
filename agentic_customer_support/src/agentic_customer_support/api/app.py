@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -90,6 +90,15 @@ class UserRole(str, Enum):
     PLATFORM_ADMIN = 'PLATFORM_ADMIN'
 
 
+class TicketState(str, Enum):
+    OPEN = 'OPEN'
+    ESCALATION_REQUESTED = 'ESCALATION_REQUESTED'
+    ESCALATION_QUEUED = 'ESCALATION_QUEUED'
+    HUMAN_ACTIVE = 'HUMAN_ACTIVE'
+    HUMAN_RESOLVED = 'HUMAN_RESOLVED'
+    CLOSED = 'CLOSED'
+
+
 ROLE_PERMISSIONS: Dict[UserRole, List[str]] = {
     UserRole.REQUESTOR: ['create_ticket', 'view_own_tickets', 'feedback'],
     UserRole.REAL_AGENT: ['view_queue', 'accept_ticket', 'resolve_ticket', 'escalate'],
@@ -132,6 +141,57 @@ def _find_ticket_or_404(ticket_id: str) -> Dict[str, Any]:
     if not ticket:
         raise HTTPException(status_code=404, detail='Ticket not found')
     return ticket
+
+
+def _can_access_ticket(ticket: Dict[str, Any], current_user: Dict[str, Any]) -> bool:
+    role = current_user.get('role')
+    if role == UserRole.PLATFORM_ADMIN.value:
+        return True
+    if role == UserRole.REQUESTOR.value:
+        return ticket.get('user_id') == current_user.get('id')
+    if role == UserRole.REAL_AGENT.value:
+        if ticket.get('agentAssigned') == current_user.get('id'):
+            return True
+        # Agents can inspect escalated queue tickets before acceptance.
+        return ticket.get('conversationState') in {TicketState.ESCALATION_QUEUED.value, TicketState.HUMAN_ACTIVE.value}
+    return False
+
+
+def _sender_type_for_role(role: str) -> str:
+    if role == UserRole.REQUESTOR.value:
+        return 'requestor'
+    if role == UserRole.REAL_AGENT.value:
+        return 'real_agent'
+    if role == UserRole.PLATFORM_ADMIN.value:
+        return 'system'
+    return 'system'
+
+
+class TicketWebSocketManager:
+    def __init__(self):
+        self._connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, ticket_id: str, websocket: WebSocket) -> None:
+        await websocket.accept()
+        self._connections.setdefault(ticket_id, []).append(websocket)
+
+    def disconnect(self, ticket_id: str, websocket: WebSocket) -> None:
+        connections = self._connections.get(ticket_id, [])
+        if websocket in connections:
+            connections.remove(websocket)
+        if not connections and ticket_id in self._connections:
+            self._connections.pop(ticket_id, None)
+
+    async def broadcast(self, ticket_id: str, event: Dict[str, Any]) -> None:
+        connections = list(self._connections.get(ticket_id, []))
+        for websocket in connections:
+            try:
+                await websocket.send_json(event)
+            except Exception:
+                self.disconnect(ticket_id, websocket)
+
+
+ws_manager = TicketWebSocketManager()
 
 
 async def get_current_user(authorization: Optional[str] = Header(None, alias='Authorization')) -> Dict[str, Any]:
@@ -329,6 +389,16 @@ class QueueResolveIn(BaseModel):
     resolutionNotes: str
 
 
+class TicketMessageIn(BaseModel):
+    sender_type: Optional[str] = None
+    body: str
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class TicketTypingIn(BaseModel):
+    is_typing: bool
+
+
 class AdminUserCreateIn(BaseModel):
     email: str
     name: str
@@ -436,6 +506,22 @@ async def submit_ticket(
         raise HTTPException(status_code=500, detail=result['error'])
 
     ticket = ticket_service.create_ticket(conversation_id=conv['id'], user_id=user_id, payload=result)
+    ticket_service.add_message(
+        ticket_id=ticket['id'],
+        sender_id=user_id,
+        sender_role=current_user['role'],
+        sender_type='requestor',
+        body=req.message,
+        metadata=req.metadata,
+    )
+    ticket_service.add_message(
+        ticket_id=ticket['id'],
+        sender_id='ai-agent',
+        sender_role='SYSTEM',
+        sender_type='ai_agent',
+        body=result.get('response', ''),
+        metadata={'confidence': result.get('confidence')},
+    )
     _log_audit('ticket.submit', actor=current_user, target=ticket['id'])
     return ticket
 
@@ -483,11 +569,17 @@ async def accept_queue_ticket(
     current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT)),
 ):
     ticket = _find_ticket_or_404(ticket_id)
-    updated = ticket_service.update_ticket(ticket_id, {
-        'status': 'in_progress',
-        'agentAssigned': current_user['id'],
-        'acceptedAt': datetime.utcnow().isoformat(),
-    })
+    updated = ticket_service.accept_escalation(ticket_id=ticket_id, agent_id=current_user['id'])
+    if not updated:
+        raise HTTPException(status_code=404, detail='Ticket not found')
+    status_event = {
+        'type': 'escalation.accepted',
+        'ticket_id': ticket_id,
+        'state': updated.get('conversationState'),
+        'accepted_by': current_user['id'],
+        'accepted_at': updated.get('acceptedAt'),
+    }
+    await ws_manager.broadcast(ticket_id, status_event)
     _log_audit('queue.accept', actor=current_user, target=ticket.get('id'))
     return updated
 
@@ -499,12 +591,16 @@ async def resolve_queue_ticket(
     current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
 ):
     ticket = _find_ticket_or_404(ticket_id)
-    updated = ticket_service.update_ticket(ticket_id, {
-        'status': 'resolved',
-        'resolutionNotes': req.resolutionNotes,
-        'resolvedBy': current_user['id'],
-        'resolvedAt': datetime.utcnow().isoformat(),
-    })
+    updated = ticket_service.resolve_human_ticket(ticket_id=ticket_id, resolver_id=current_user['id'], resolution_notes=req.resolutionNotes)
+    if not updated:
+        raise HTTPException(status_code=404, detail='Ticket not found')
+    status_event = {
+        'type': 'ticket.status.changed',
+        'ticket_id': ticket_id,
+        'state': updated.get('conversationState'),
+        'status': updated.get('status'),
+    }
+    await ws_manager.broadcast(ticket_id, status_event)
     _log_audit('queue.resolve', actor=current_user, target=ticket.get('id'))
     return updated
 
@@ -538,13 +634,137 @@ async def escalate_ticket_v1(
     current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
 ):
     ticket = _find_ticket_or_404(ticket_id)
+    escalation_session = ticket_service.request_escalation(
+        ticket_id=ticket_id,
+        reason=escalation.reason or 'manual_escalation',
+        priority=ticket.get('priority', 3),
+        ai_summary={
+            'intent': ticket.get('category', 'general'),
+            'attempted_actions': [],
+            'resolution_attempts': 1,
+            'last_ai_message': ticket.get('payload', {}).get('response', ''),
+        },
+    )
     updated = ticket_service.update_ticket(ticket_id, {
         'status': 'escalated',
+        'conversationState': TicketState.ESCALATION_QUEUED.value,
         'agentNotes': escalation.reason,
         'escalatedBy': current_user['id'],
     })
+    await ws_manager.broadcast(ticket_id, {
+        'type': 'escalation.requested',
+        'ticket_id': ticket_id,
+        'state': TicketState.ESCALATION_QUEUED.value,
+        'requested_at': escalation_session.get('requested_at') if escalation_session else None,
+    })
     _log_audit('ticket.escalate', actor=current_user, target=ticket.get('id'))
     return updated
+
+
+@app.get('/api/v1/tickets/{ticket_id}/handoff-context')
+async def get_handoff_context(
+    ticket_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    if current_user['role'] == UserRole.REAL_AGENT.value and ticket.get('agentAssigned') not in {None, current_user['id']}:
+        raise HTTPException(status_code=403, detail='Insufficient permissions')
+
+    handoff_context = ticket_service.get_handoff_context(ticket_id)
+    if not handoff_context:
+        raise HTTPException(status_code=404, detail='Handoff context not found')
+    return handoff_context
+
+
+@app.get('/api/v1/tickets/{ticket_id}/messages')
+async def list_ticket_messages(
+    ticket_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REQUESTOR, UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    if not _can_access_ticket(ticket, current_user):
+        raise HTTPException(status_code=403, detail='Insufficient permissions')
+    return ticket_service.list_messages(ticket_id)
+
+
+@app.post('/api/v1/tickets/{ticket_id}/messages')
+async def create_ticket_message(
+    ticket_id: str,
+    req: TicketMessageIn,
+    current_user: Dict[str, Any] = Depends(require_role(UserRole.REQUESTOR, UserRole.REAL_AGENT, UserRole.PLATFORM_ADMIN)),
+):
+    ticket = _find_ticket_or_404(ticket_id)
+    if not _can_access_ticket(ticket, current_user):
+        raise HTTPException(status_code=403, detail='Insufficient permissions')
+
+    sender_type = _sender_type_for_role(current_user['role'])
+    message = ticket_service.add_message(
+        ticket_id=ticket_id,
+        sender_id=current_user['id'],
+        sender_role=current_user['role'],
+        sender_type=sender_type,
+        body=req.body,
+        metadata=req.metadata,
+    )
+    if not message:
+        raise HTTPException(status_code=404, detail='Ticket not found')
+
+    event = {
+        'type': 'chat.message.created',
+        'ticket_id': ticket_id,
+        'message': message,
+    }
+    await ws_manager.broadcast(ticket_id, event)
+    return message
+
+
+@app.websocket('/api/v1/ws/tickets/{ticket_id}')
+async def ticket_chat_socket(ticket_id: str, websocket: WebSocket, token: str = Query(...)):
+    user = auth_tokens.get(token)
+    if not user:
+        await websocket.close(code=1008)
+        return
+
+    ticket = ticket_service.get_ticket(ticket_id)
+    if not ticket or not _can_access_ticket(ticket, user):
+        await websocket.close(code=1008)
+        return
+
+    await ws_manager.connect(ticket_id, websocket)
+    try:
+        await websocket.send_json({
+            'type': 'ticket.status.changed',
+            'ticket_id': ticket_id,
+            'state': ticket.get('conversationState', TicketState.OPEN.value),
+            'status': ticket.get('status'),
+        })
+
+        while True:
+            payload = await websocket.receive_json()
+            event_type = payload.get('type')
+            if event_type == 'chat.typing':
+                await ws_manager.broadcast(ticket_id, {
+                    'type': 'chat.typing',
+                    'ticket_id': ticket_id,
+                    'sender_type': _sender_type_for_role(user['role']),
+                    'is_typing': bool(payload.get('is_typing', False)),
+                })
+            elif event_type == 'subscribe':
+                await websocket.send_json({
+                    'type': 'subscribed',
+                    'ticket_id': ticket_id,
+                    'role': user['role'],
+                })
+            elif event_type == 'ping':
+                await websocket.send_json({'type': 'pong'})
+    except WebSocketDisconnect:
+        ws_manager.disconnect(ticket_id, websocket)
+    except Exception:
+        ws_manager.disconnect(ticket_id, websocket)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
 
 
 @app.get('/api/v1/users')

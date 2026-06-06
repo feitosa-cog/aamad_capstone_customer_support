@@ -10,101 +10,97 @@ Last Updated: 2026-06-06
 
 ## 1. Scope Alignment Summary
 
-This plan updates backend delivery for SAD v2.0 highlights:
-- CrewAI-based multi-agent support orchestration
-- RBAC with mocked personas: REQUESTOR, REAL_AGENT, PLATFORM_ADMIN
-- Role-protected API surface for requestor, agent, and admin workflows
-- Admin operations for users, system health, and analytics export
-- Progress tracking tied to implementation updates
+Plan targets the SAD v2.1 backend deltas and highlighted features:
+- Escalated human chat state model: OPEN, ESCALATION_REQUESTED, ESCALATION_QUEUED, HUMAN_ACTIVE, HUMAN_RESOLVED, CLOSED
+- Same-thread requestor and REAL_AGENT conversation with role-aware access control
+- Handoff context retrieval endpoint for Real Agent session
+- Role-authorized ticket message APIs plus ticket-scoped WebSocket channel
+- CrewAI updates that preserve triage/specialist/handoff and add knowledge support
 
-Out-of-scope for this iteration:
-- Production identity provider integration
-- Real Databricks export pipeline
-- Full persistent user/auth tables and migrations
+Out-of-scope in this iteration:
+- Production SSO/SCIM integration
+- Persistent DB migration for escalation sessions and participants
+- Production ServiceNow cutover (mock-first remains default)
 
 ---
 
 ## 2. Application Crew Implementation (CrewAI Agents)
 
-### 2.1 Current Crew Shape
+### 2.1 MVP Crew Shape
 
-Tier 1 Router Agents:
+Core agents in runtime:
 - triage_agent
-- handoff_agent
-
-Tier 2 Specialist Agents:
 - order_specialist
 - product_specialist
 - returns_specialist
 - consumer_specialist
 - it_specialist
+- handoff_agent
+- knowledge_agent
 
-### 2.2 Crew Implementation Plan
+### 2.2 Crew Work Breakdown
 
 | Item | Description | Status | Notes |
 |---|---|---|---|
-| C-1 | Keep 7-agent architecture from PRD/SAD | Complete | Existing crew supports all specialist domains |
-| C-2 | Ensure triage output maps to executable specialist tasks | Complete | Category normalization added (consumer->account, refund->returns, technical->it) |
-| C-3 | Add role-aware processing context for routing/handoff | Complete | requester_role input added to crew processing |
-| C-4 | Preserve fallback behavior when LLM credentials are missing | Complete | Existing mock fallback retained |
-| C-5 | Capture assignment metadata in merged specialist output | Complete | agentAssigned propagated in crew merge logic |
+| C-1 | Maintain triage -> specialist -> handoff flow | Complete | Existing orchestration preserved |
+| C-2 | Keep category normalization for stable specialist routing | Complete | Alias mapping retained in crew |
+| C-3 | Keep role-aware request context in processing | Complete | requester_role input remains active |
+| C-4 | Add Knowledge Agent configuration + task | Complete | Added knowledge_agent and knowledge_task configs |
+| C-5 | Preserve mock fallback when no LLM credentials | Complete | Existing behavior retained |
 
-### 2.3 Crew Risks and Follow-ups
+### 2.3 Crew Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| LLM response drift in category names | Wrong task routing | Alias normalization in crew |
-| Sparse handoff metadata | Human escalations slower | Continue adding structured handoff fields in tasks/output schema |
+| LLM category drift | Wrong specialist route | Category alias normalization |
+| Weak KB evidence structure | Lower handoff quality | Knowledge agent prompt/task added for synthesis |
 
 ---
 
 ## 3. API Endpoints to Implement
 
-### 3.1 Requestor Endpoints (Role-Based)
+### 3.1 Requestor APIs
 
 | Endpoint | Method | Purpose | Status |
 |---|---|---|---|
-| /api/v1/tickets | POST | Submit support request/ticket | Complete |
+| /api/v1/tickets | POST | Submit support request | Complete |
 | /api/v1/tickets/mine | GET | List own tickets | Complete |
-| /api/v1/tickets/{id} | GET | View ticket with ownership checks | Complete |
-| /api/v1/tickets/{id}/feedback | POST | Submit requestor feedback | Complete |
+| /api/v1/tickets/{id} | GET | View own ticket details | Complete |
+| /api/v1/tickets/{id}/feedback | POST | Submit ticket feedback | Complete |
+| /api/v1/tickets/{id}/messages | GET | Retrieve same-thread ticket messages | Complete |
+| /api/v1/tickets/{id}/messages | POST | Send requestor message in same thread | Complete |
 
-### 3.2 Agent Endpoints (Role-Based)
+### 3.2 Real Agent APIs
 
 | Endpoint | Method | Purpose | Status |
 |---|---|---|---|
 | /api/v1/queue | GET | View escalated queue | Complete |
-| /api/v1/queue/{id}/accept | POST | Accept ticket | Complete |
-| /api/v1/queue/{id}/resolve | POST | Resolve ticket | Complete |
-| /api/v1/customers/{id}/history | GET | View customer conversation history | Complete |
-| /api/v1/tickets/{id}/notes | PUT | Add agent notes | Complete |
-| /api/v1/tickets/{id}/escalate | POST | Escalate to L3 path | Complete |
+| /api/v1/queue/{id}/accept | POST | Accept escalation and activate human chat | Complete |
+| /api/v1/queue/{id}/resolve | POST | Resolve human-handled ticket | Complete |
+| /api/v1/tickets/{id}/handoff-context | GET | Fetch handoff pane payload | Complete |
+| /api/v1/tickets/{id}/messages | GET | Retrieve live conversation history | Complete |
+| /api/v1/tickets/{id}/messages | POST | Send real-agent message | Complete |
+| /api/v1/tickets/{id}/escalate | POST | Force escalation path | Complete |
 
-### 3.3 Admin Endpoints (Role-Based)
+### 3.3 Real-Time Contract
 
 | Endpoint | Method | Purpose | Status |
 |---|---|---|---|
-| /api/v1/users | GET | List users | Complete |
-| /api/v1/users | POST | Create user | Complete |
-| /api/v1/users/{id} | PUT | Update user | Complete |
-| /api/v1/users/{id} | DELETE | Delete user | Complete |
-| /api/v1/audit-logs | GET | Retrieve audit events | Complete |
-| /api/v1/system/health | GET | Role-protected system health | Complete |
-| /api/v1/config | PUT | Update runtime config | Complete |
-| /api/v1/analytics/export | POST | Queue analytics export | Complete |
+| /api/v1/ws/tickets/{ticket_id} | WS | Ticket-scoped live event channel | Complete |
 
-### 3.4 Frontend Compatibility Endpoints
+Event coverage implemented:
+- escalation.requested
+- escalation.accepted
+- chat.message.created
+- chat.typing
+- ticket.status.changed
 
-These keep current frontend API modules functional while RBAC rollout uses v1 endpoints.
+### 3.4 Admin and Compatibility APIs
 
-| Endpoint | Method | Status |
+| Endpoint Group | Purpose | Status |
 |---|---|---|
-| /users | GET | Complete |
-| /users/{id}/role | PUT | Complete |
-| /system-health | GET | Complete |
-| /analytics/dashboard | GET | Complete |
-| /analytics/tickets | GET | Complete |
-| /analytics/agents | GET | Complete |
+| /api/v1/users, /api/v1/audit-logs, /api/v1/system/health, /api/v1/config, /api/v1/analytics/export | Role-protected admin operations | Complete |
+| /users, /users/{id}/role, /system-health, /analytics/* | Frontend compatibility during rollout | Complete |
 
 ---
 
@@ -112,34 +108,31 @@ These keep current frontend API modules functional while RBAC rollout uses v1 en
 
 | Component | Responsibility | Status |
 |---|---|---|
-| Role model and permissions map | Role enum and role-to-permissions mapping | Complete |
-| Auth token session map | Mock login/verify/refresh token lifecycle | Complete |
-| Authorization dependency | Require-role dependency for FastAPI endpoints | Complete |
-| Audit log recorder | Append action records for critical operations | Complete |
-| System config registry | Mutable in-memory runtime config | Complete |
-| Conversation history accessor | Query all conversations for a user | Complete |
-| Ticket workflow handlers | accept/resolve/escalate/notes/feedback updates | Complete |
+| Ticket state model | Maintain SAD v2.1 conversation state transitions | Complete |
+| Escalation session tracker | requested_at, accepted_at, accepted_by, queue_wait_seconds | Complete |
+| Ticket participant tracker | role-aware participants per ticket | Complete |
+| Ticket message store | Ordered, persisted ticket chat timeline | Complete |
+| WS broadcast manager | Deliver ticket-scoped live events | Complete |
+| Role access guard | Requestor ownership and real-agent/admin authorization | Complete |
+| Handoff context builder | Build escalation, AI summary, customer context payload | Complete |
 
 ---
 
 ## 5. Implementation Approach
 
-### 5.1 Delivery Strategy
+1. Review PRD and SAD v2.1 delta to identify backend gaps.
+2. Add missing CrewAI config for Knowledge Agent.
+3. Extend ticket business layer with state machine and escalation metadata.
+4. Implement handoff-context and ticket message APIs with RBAC checks.
+5. Implement WS ticket channel and required event types.
+6. Keep existing endpoint compatibility and avoid breaking current UI flows.
+7. Add tests for new contracts and rerun full backend suite.
+8. Update this plan as progress changes.
 
-1. Read PRD/SAD and identify RBAC delta from current backend.
-2. Implement role scaffolding and mocked personas in API app.
-3. Add FastAPI dependency-based authorization.
-4. Add SAD v2 role-based endpoint groups.
-5. Keep existing legacy endpoints intact for compatibility.
-6. Add and run tests for RBAC and queue flow.
-7. Keep this plan updated with status and outcomes.
-
-### 5.2 Technical Decisions
-
-- Keep FastAPI as backend runtime for MVP speed and CrewAI-native integration.
-- Keep in-memory user/token/config stores for MVP and tests.
-- Add structured audit logs in-memory as SAD-aligned placeholder.
-- Avoid introducing database schema changes for users in this iteration to reduce migration risk.
+Technical choices for MVP:
+- FastAPI and in-memory stores preserved for delivery speed and testability.
+- WebSocket authorization uses existing auth token map (mock auth).
+- Message ordering uses created_at plus monotonic sequence in ticket service.
 
 ---
 
@@ -149,32 +142,32 @@ These keep current frontend API modules functional while RBAC rollout uses v1 en
 
 | Workstream | Target | Status |
 |---|---|---|
-| Crew updates | Role-aware and normalized routing | Complete |
-| Auth and RBAC | Mocked users plus role dependency checks | Complete |
-| Requestor APIs | Ticket submit, mine, detail, feedback | Complete |
-| Agent APIs | Queue accept/resolve/history/notes/escalation | Complete |
-| Admin APIs | User CRUD, health, config, audit, export | Complete |
-| Frontend compat APIs | users, role updates, analytics, health | Complete |
-| Automated tests | API RBAC coverage for requestor, agent, admin | Complete |
+| Crew updates | Include knowledge agent/task and preserve role-aware routing | Complete |
+| Escalation state model | Add SAD v2.1 conversation states and transitions | Complete |
+| Handoff contract | Implement /handoff-context endpoint and payload | Complete |
+| Ticket chat contract | Implement role-aware GET/POST /messages | Complete |
+| WebSocket transport | Implement WS /api/v1/ws/tickets/{id} event stream | Complete |
+| Regression safety | Preserve legacy routes and existing backend flows | Complete |
+| Automated tests | Add contract tests and run full backend suite | Complete |
 
 ### 6.2 Progress Log
 
 | Date | Update |
 |---|---|
-| 2026-06-05 | Reviewed PRD and SAD v2.0. Confirmed RBAC and role-based API expansion as primary backend delta. |
-| 2026-06-05 | Updated backend API with mocked personas, role permissions, authorization dependency, and SAD endpoint groups. |
-| 2026-06-05 | Updated Crew processing with role context and category alias normalization for stable specialist routing. |
-| 2026-06-05 | Added conversation history query support for agent customer history endpoint. |
-| 2026-06-05 | Added RBAC-focused API tests for requestor, agent queue, and admin authorization flows. |
-| 2026-06-05 | Ran backend tests: 11 passed (crew, services, API including new RBAC scenarios). |
-| 2026-06-06 | Re-validated backend implementation in current workspace state: 12 tests passed including end-to-end RBAC flow coverage. |
+| 2026-06-06 | Reviewed PRD and SAD v2.1 highlighted features (human escalation state model, same-thread chat continuity, new API/WS contract). |
+| 2026-06-06 | Updated CrewAI implementation with Knowledge Agent and knowledge task configuration. |
+| 2026-06-06 | Extended ticket business logic with escalation sessions, participants, ordered message persistence, and handoff-context generation. |
+| 2026-06-06 | Implemented new endpoints: GET /api/v1/tickets/{id}/handoff-context, GET/POST /api/v1/tickets/{id}/messages, WS /api/v1/ws/tickets/{id}. |
+| 2026-06-06 | Added state/event transitions for escalation.requested, escalation.accepted, chat.message.created, chat.typing, ticket.status.changed. |
+| 2026-06-06 | Added API tests for handoff context, ticket messaging, and WebSocket typing events. |
+| 2026-06-06 | Executed backend tests: 14 passed. |
 
 ---
 
 ## 7. Exit Criteria
 
-- All role-protected endpoints return expected authorization behavior.
-- Existing chat and ticket endpoints remain functional.
-- Crew processing returns stable category mapping and response envelope.
-- Backend tests pass, including new RBAC coverage.
-- Plan document reflects final status and any outstanding gaps.
+- CrewAI agents and configs include triage, specialists, handoff, and knowledge support.
+- SAD v2.1 handoff context and ticket messaging APIs are implemented and role-protected.
+- Ticket WebSocket channel emits required real-time contract events.
+- Conversation state transitions are tracked for escalation and human resolution.
+- Backend test suite passes with coverage for new contracts.

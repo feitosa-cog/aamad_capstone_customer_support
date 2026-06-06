@@ -120,3 +120,14 @@ handoff_task:
     requires_escalation, and handoff_notes. The response should be a short,
     customer-facing confirmation that the issue is being escalated.
   agent: handoff_agent
+
+knowledge_task:
+  description: >
+    Retrieve and synthesize relevant support knowledge for the current issue. Use
+    the query context to produce evidence-backed guidance that can be reused for
+    responses and future KB drafting.
+  expected_output: >
+    A concise evidence summary suitable for support operations with confidence in
+    applicability. Return only JSON with fields for response, category, urgency,
+    requires_escalation, and handoff_notes.
+  agent: knowledge_agent

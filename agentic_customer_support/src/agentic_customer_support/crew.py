@@ -49,6 +49,14 @@ class AgenticCustomerSupport():
             verbose=True
         )
 
+    @agent
+    def knowledge_agent(self) -> Agent:
+        """Synthesizes KB evidence for responses and draft articles"""
+        return Agent(
+            config=self.agents_config['knowledge_agent'],  # type: ignore[index]
+            verbose=True
+        )
+
     # ==================== TIER 2: DOMAIN SPECIALISTS ====================
     
     @agent
@@ -149,6 +157,14 @@ class AgenticCustomerSupport():
             agent=self.handoff_agent()
         )
 
+    @task
+    def knowledge_task(self) -> Task:
+        """Retrieve and synthesize relevant KB evidence"""
+        return Task(
+            config=self.tasks_config['knowledge_task'],  # type: ignore[index]
+            agent=self.knowledge_agent()
+        )
+
     # ==================== CREW CONFIGURATION ====================
 
     @crew
@@ -240,6 +256,7 @@ class AgenticCustomerSupport():
             'returns': (self.returns_specialist, self.returns_task),
             'account': (self.consumer_specialist, self.account_task),
             'it': (self.it_specialist, self.it_task),
+            'knowledge': (self.knowledge_agent, self.knowledge_task),
         }
 
     def _execute_specialist_task(self, category: str, inputs: dict) -> Optional[str]:
