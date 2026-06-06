@@ -111,7 +111,10 @@ Goal:
 
 Tasks:
 - Requestor: show escalation state, agent-joined indicator, same-thread chat continuity.
-- REAL_AGENT: queue view with SLA timers, accept action, live chat console.
+- REAL_AGENT: queue view with SLA timers, accept action, and Real Agent conversation session page.
+- REAL_AGENT conversation session page must include:
+  - Handoff data panel (escalation reason, AI summary, attempted actions, priority, customer context).
+  - Live chat panel for direct two-way messaging with requestor.
 - PLATFORM_ADMIN: escalation dashboard widgets and policy controls.
 
 Status: Not Started
@@ -159,8 +162,9 @@ Target Date: 2026-06-30
 - Preserve AI summary payload for REAL_AGENT context panel.
 
 3. API and event layer
-- Add/verify endpoints for escalate, accept, list/send messages.
-- Add event publication for escalation.accepted and chat.message.created.
+- Add/verify endpoints for escalate, accept, get handoff context, and list/send messages.
+- Add and verify WebSocket endpoint contract for ticket sessions (WS /api/v1/ws/tickets/{ticket_id}).
+- Add event publication for escalation.accepted, chat.message.created, and chat.typing.
 
 4. Observability
 - Emit structured metrics for queue wait and first human response.
@@ -176,10 +180,12 @@ Status: Not Started
 2. Agent flow
 - Queue table with SLA aging indicators.
 - Accept button transitions ticket into human-active workspace.
+- Human-active workspace must surface handoff context panel and live chat composer in the same session view.
 
 3. Shared chat components
 - Support sender_type rendering: ai_agent, real_agent, requestor, system.
 - Add typing/presence display for real-agent sessions.
+- Use WebSocket as primary channel for real-time updates in Real Agent conversation sessions, with polling fallback.
 
 4. State management and resiliency
 - Reconcile optimistic updates with server events.
@@ -192,6 +198,8 @@ Status: Not Started
 1. Functional suite
 - Validate escalation initiation and acceptance behavior.
 - Validate no context loss in handoff.
+- Validate REAL_AGENT session page displays handoff data fields before first reply.
+- Validate REAL_AGENT can send/receive live messages with requestor from same session page.
 
 2. Security suite
 - Validate role-based denials for read/write on other users' tickets.
@@ -200,6 +208,7 @@ Status: Not Started
 3. Reliability suite
 - Validate behavior under event transport interruptions.
 - Validate fallback polling if real-time channel drops.
+- Validate WebSocket connect, reconnect, and catch-up behavior for active ticket sessions.
 
 4. Reporting
 - Publish defect classification by severity and area.
@@ -266,6 +275,45 @@ Overall Program Status: In Progress (Planning Complete, Implementation Pending)
 | Frontend implementation | Not Started | Awaiting sprint execution |
 | QA execution | Not Started | Test assets to be prepared after M2/M3 |
 | Release readiness | Not Started | Depends on milestone completion |
+
+---
+
+## 9. Definition of Done: Real Agent Conversation Session
+
+This checklist is the completion gate for escalation handoff-context plus live chat delivery.
+
+### 9.1 Backend DoD
+
+- GET /api/v1/tickets/{ticket_id}/handoff-context returns required handoff payload for authorized users.
+- WS /api/v1/ws/tickets/{ticket_id} is implemented with role-aware subscription authorization.
+- Message write path persists data before broadcast and emits chat.message.created.
+- chat.typing and escalation.accepted events are emitted with ticket-scoped payloads.
+- Reconnect catch-up path is supported via message fetch with deterministic ordering.
+
+### 9.2 Frontend DoD
+
+- Real Agent conversation session page includes Handoff Data pane and Live Chat pane.
+- Handoff data renders before first reply action is enabled.
+- WebSocket is primary real-time transport for the session page.
+- Polling fallback activates automatically on WebSocket failure.
+- Reconnect flow rehydrates missed events/messages without duplicates.
+
+### 9.3 QA DoD
+
+- End-to-end scenario passes: requestor -> AI -> escalation -> real agent live chat -> resolved.
+- Role-based authorization tests pass for REST and WebSocket session access.
+- Reconnect/catch-up tests pass under simulated network interruption.
+- Polling fallback tests pass with no missing or duplicated messages.
+- Audit and analytics events are present for escalation and human chat transitions.
+
+### 9.4 Sign-Off Gate
+
+- Backend Lead: Approved
+- Frontend Lead: Approved
+- QA Lead: Approved
+- Architecture Owner: Approved
+
+Status: Pending
 
 ---
 

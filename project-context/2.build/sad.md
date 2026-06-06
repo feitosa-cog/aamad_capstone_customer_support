@@ -169,6 +169,8 @@ REAL_AGENT:
 - See escalation queue with SLA timers.
 - Accept escalation and enter live chat console.
 - View compiled AI summary, timeline, and tool outcomes.
+- In the Real Agent conversation session page, always see handoff data (reason, summary, previous attempts, priority, and customer context) before sending replies.
+- In the same Real Agent conversation session page, send and receive live chat messages with the requestor.
 
 PLATFORM_ADMIN:
 - Monitor escalation SLA, queue depth, and handoff outcomes.
@@ -184,6 +186,9 @@ Required interface changes:
   - Ticket resolved by human.
 - Add typing and presence for REAL_AGENT in HUMAN_ACTIVE state.
 - Keep composer active for requestor while queued and while human is active.
+- Add a required Real Agent Conversation Session layout with two panes:
+  - Handoff Data Pane: escalation reason, AI summary, attempted actions, ticket priority, customer history.
+  - Live Chat Pane: full timeline plus composer for direct REAL_AGENT <-> requestor communication.
 
 Frontend components requiring updates:
 - ChatContainer, MessageList, MessageBubble, TypingIndicator.
@@ -192,7 +197,7 @@ Frontend components requiring updates:
 
 ### 3.4 Real-Time Transport
 
-- Preferred: WebSocket channel per ticket.
+- Required for Real Agent conversation sessions: WebSocket channel per ticket as the primary real-time transport.
 - Fallback: short polling where WebSocket not available.
 - Event types:
   - escalation.requested
@@ -214,6 +219,7 @@ Core role-aware APIs:
 - POST /api/v1/queue/{ticket_id}/accept
 - POST /api/v1/queue/{ticket_id}/resolve
 - POST /api/v1/tickets/{ticket_id}/escalate
+- GET /api/v1/tickets/{ticket_id}/handoff-context
 - GET /api/v1/tickets/{ticket_id}/messages
 - POST /api/v1/tickets/{ticket_id}/messages
 - WS /api/v1/ws/tickets/{ticket_id}
@@ -261,6 +267,105 @@ Migration path (mock to production):
 - If no REAL_AGENT accepts within SLA threshold, notify admin and keep requestor informed.
 - If WebSocket disconnects, persist messages and recover through polling.
 
+### 4.5 API and WebSocket Contract (Real Agent Conversation Session)
+
+The Real Agent conversation session requires both handoff-context retrieval and WebSocket-based live chat.
+
+REST contract: handoff context
+
+- Endpoint: GET /api/v1/tickets/{ticket_id}/handoff-context
+- Purpose: populate handoff data pane before first REAL_AGENT reply.
+- Access: REAL_AGENT for assigned/accepted tickets, PLATFORM_ADMIN read access.
+
+Example response:
+
+```json
+{
+  "ticket_id": "tkt_12345",
+  "escalation": {
+    "requested_at": "2026-06-06T12:01:00Z",
+    "reason": "customer_requested_human",
+    "priority": "high",
+    "queue_wait_seconds": 42
+  },
+  "ai_summary": {
+    "intent": "order_issue",
+    "attempted_actions": [
+      "order_lookup",
+      "refund_policy_check"
+    ],
+    "resolution_attempts": 2,
+    "last_ai_message": "I could not complete a refund due to policy mismatch."
+  },
+  "customer_context": {
+    "user_id": "usr_1001",
+    "open_ticket_count": 1,
+    "recent_ticket_ids": ["tkt_12001", "tkt_12110"]
+  }
+}
+```
+
+REST contract: send message
+
+- Endpoint: POST /api/v1/tickets/{ticket_id}/messages
+- Purpose: server-authoritative message persistence and broadcast trigger.
+
+Example request:
+
+```json
+{
+  "sender_type": "real_agent",
+  "body": "Hi, I am Alex from support. I reviewed your previous steps and can help now."
+}
+```
+
+WebSocket contract: live conversation transport
+
+- Endpoint: WS /api/v1/ws/tickets/{ticket_id}
+- Purpose: primary low-latency channel for message, typing, and status events.
+- Requirement: Real Agent conversation session page must subscribe immediately after escalation acceptance.
+
+Client subscribe example:
+
+```json
+{
+  "type": "subscribe",
+  "ticket_id": "tkt_12345",
+  "role": "REAL_AGENT"
+}
+```
+
+Server event example:
+
+```json
+{
+  "type": "chat.message.created",
+  "ticket_id": "tkt_12345",
+  "message": {
+    "id": "msg_8001",
+    "sender_type": "requestor",
+    "body": "Thanks, I still need help with this order.",
+    "created_at": "2026-06-06T12:03:44Z"
+  }
+}
+```
+
+Typing event example:
+
+```json
+{
+  "type": "chat.typing",
+  "ticket_id": "tkt_12345",
+  "sender_type": "real_agent",
+  "is_typing": true
+}
+```
+
+Fallback behavior:
+
+- On WebSocket failure, client switches to polling for messages and status.
+- On reconnect, client performs catch-up fetch via GET /api/v1/tickets/{ticket_id}/messages.
+
 ---
 
 ## 5. DevOps and Deployment Architecture
@@ -304,6 +409,69 @@ Alert thresholds:
 4. REAL_AGENT accepts escalation.
 5. Conversation transitions to HUMAN_ACTIVE and both participants chat in same thread.
 6. Resolution and close updates propagate to requestor and analytics.
+
+### 6.1.1 Escalation to Real Agent Session Sequence
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant R as Requestor UI
+  participant API as FastAPI Backend
+  participant AI as CrewAI Services
+  participant Q as Agent Queue UI
+  participant A as Real Agent Session UI
+  participant WS as WebSocket Gateway
+
+  R->>API: Submit message / ticket update
+  API->>AI: Triage and specialist resolution attempt
+  AI-->>API: Escalation requested with handoff payload
+  API-->>R: Status update ESCALATION_QUEUED
+  API-->>Q: Queue item published
+
+  Q->>API: Accept escalation
+  API-->>A: HUMAN_ACTIVE state + ticket assignment
+  A->>API: GET handoff-context
+  API-->>A: Handoff data (summary, attempts, priority, customer context)
+
+  A->>WS: Subscribe WS /api/v1/ws/tickets/{ticket_id}
+  R->>WS: Subscribe WS /api/v1/ws/tickets/{ticket_id}
+
+  A->>API: POST message (real_agent)
+  API-->>WS: chat.message.created
+  WS-->>R: Deliver real-agent message
+
+  R->>API: POST message (requestor)
+  API-->>WS: chat.message.created
+  WS-->>A: Deliver requestor message
+
+  A->>WS: chat.typing
+  WS-->>R: typing indicator
+
+  Note over A,WS: If WS disconnects, client falls back to polling and performs catch-up on reconnect.
+```
+
+### 6.1.2 Implementation Checklist by Owner
+
+BE:
+- Implement and secure GET /api/v1/tickets/{ticket_id}/handoff-context for assigned REAL_AGENT and admin roles.
+- Implement WS /api/v1/ws/tickets/{ticket_id} with role-aware subscription authorization.
+- Persist outgoing/incoming messages before emitting chat.message.created events.
+- Emit escalation.accepted, chat.message.created, and chat.typing events with ticket-scoped payloads.
+- Support reconnect catch-up using GET /api/v1/tickets/{ticket_id}/messages with deterministic ordering.
+
+FE:
+- Build Real Agent conversation session layout with Handoff Data pane and Live Chat pane.
+- Load and render handoff-context payload before enabling first human reply action.
+- Connect to ticket WebSocket immediately on entering HUMAN_ACTIVE state.
+- Render real-time message and typing events; switch to polling on transport failure.
+- Reconcile optimistic message UI with server-confirmed events and message identifiers.
+
+QA:
+- Validate handoff data visibility before first REAL_AGENT reply in HUMAN_ACTIVE session.
+- Validate real-time bidirectional messaging via WebSocket between requestor and REAL_AGENT.
+- Validate reconnect behavior: disconnect WS, send new message, reconnect, verify catch-up.
+- Validate role-based access denials for unauthorized ticket session subscriptions.
+- Validate fallback polling path produces no duplicated or missing messages.
 
 ### 6.2 ServiceNow Integration Flow
 
@@ -393,11 +561,12 @@ QA:
 ### 9.2 Escalated Human Chat Acceptance Criteria (New/Expanded)
 
 1. Requestor can request escalation and remain in same chat thread.
-2. REAL_AGENT can accept from queue and immediately view full history.
+2. REAL_AGENT can accept from queue and immediately view full history and handoff data in the Real Agent conversation session page.
 3. Requestor sees agent joined indicator and receives human responses live.
 4. AI auto-response is paused when HUMAN_ACTIVE unless explicitly invoked by REAL_AGENT.
 5. All escalation transitions are visible in audit logs.
 6. Unauthorized users cannot read or send messages for unrelated tickets.
+7. REAL_AGENT can send chat messages to requestor directly from the Real Agent conversation session page without switching screens.
 
 ### 9.3 Regression Coverage Focus
 
