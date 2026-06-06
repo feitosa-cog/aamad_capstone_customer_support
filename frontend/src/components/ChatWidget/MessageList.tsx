@@ -6,9 +6,10 @@ import { ChatMessage } from '../../api/chatApi';
 export interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
+  typingLabel?: string;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading }) => {
+export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, typingLabel }) => {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,13 +28,14 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading })
             <MessageBubble
               key={message.id}
               role={message.role}
+              senderType={message.senderType}
               content={message.content}
               timestamp={message.timestamp}
               confidence={message.confidence}
             />
           ))
         )}
-        {isLoading && <TypingIndicator />}
+        {isLoading && <TypingIndicator label={typingLabel} />}
       </div>
       <div ref={endRef} />
     </div>

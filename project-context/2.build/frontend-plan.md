@@ -1127,6 +1127,73 @@ Validation:
 - `npm run test -- --run` → **3 test files, 9 tests passed**
 - `npm run build` → **passed**
 
+### 20.11 SAD 2.1 Escalated Human Chat Alignment (June 6, 2026)
+
+Reviewed against:
+
+- `project-context/1.define/prd.md`
+- `project-context/2.build/sad.md` (v2.1)
+
+Implemented frontend updates for highlighted new features:
+
+| Requirement (SAD 2.1) | Frontend Implementation | Status |
+|---|---|---|
+| Sender-type aware timeline (`requestor`, `ai_agent`, `real_agent`, `system`) | Chat contracts and message rendering updated with sender type mapping | ✅ Complete |
+| Escalation state model visibility | Chat UI now tracks and reacts to `OPEN`, `ESCALATION_*`, `HUMAN_ACTIVE`, `HUMAN_RESOLVED` | ✅ Complete |
+| System banners for escalation lifecycle | Added in-thread system messages for escalation requested, agent joined, and human resolved | ✅ Complete |
+| Real-agent presence cues | Typing indicator label now differentiates AI vs real agent when human chat is active | ✅ Complete |
+| Backend API compatibility for v1 routes | Chat API now supports `/api/v1/tickets/{id}/messages` and fallback legacy endpoints | ✅ Complete |
+
+Updated files for this iteration:
+
+- `frontend/src/api/chatApi.ts`
+- `frontend/src/api/mockApi.ts`
+- `frontend/src/components/ChatWidget/ChatContainer.tsx`
+- `frontend/src/components/ChatWidget/MessageList.tsx`
+- `frontend/src/components/ChatWidget/MessageBubble.tsx`
+- `frontend/src/components/ChatWidget/TypingIndicator.tsx`
+
+Validation results:
+
+- `npm run test -- --run` -> **3 passed test files, 9 passed tests**
+- `npm run build` -> **passed**
+
+Remaining follow-up (future integration pass):
+
+- WebSocket subscription for `/api/v1/ws/tickets/{ticket_id}` events (`chat.message.created`, `chat.typing`, `ticket.status.changed`).
+- Replace fallback behavior with strict v1 contracts once backend rollout is complete in all environments.
+
+### 20.12 WebSocket Live Event Integration (June 6, 2026)
+
+Implemented real-time ticket event handling in frontend chat flow.
+
+| Event | Frontend behavior | Status |
+|---|---|---|
+| `chat.message.created` | Append unique in-thread messages with sender-type mapping | ✅ Complete |
+| `chat.typing` | Show remote typing state with role-aware label | ✅ Complete |
+| `ticket.status.changed` | Update escalation state in chat container | ✅ Complete |
+| `escalation.requested` | Add system banner and move to escalation requested state | ✅ Complete |
+| `escalation.accepted` | Add system banner and move to human active state | ✅ Complete |
+
+Implementation notes:
+
+- Added reusable ticket WebSocket hook with:
+  - URL resolution from `VITE_WS_URL` (supports `{ticket_id}` token or append mode)
+  - Auth token query-param support for WS handshake
+  - Auto cleanup on unmount
+  - Mock/test-mode disable path
+- Integrated hook in chat container for live timeline updates and connection status display.
+
+Files:
+
+- `frontend/src/hooks/useTicketWebSocket.ts`
+- `frontend/src/components/ChatWidget/ChatContainer.tsx`
+
+Validation:
+
+- `npm run test -- --run` -> **3 passed files, 9 passed tests**
+- `npm run build` -> **passed**
+
 **Dashboard Components**
 - TicketTable — Sortable ticket list with status indicators
 - TicketDetail — Full ticket view with notes editor

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Minimize2, Maximize2 } from 'lucide-react';
 import MessageList from './MessageList';
 import InputBox from './InputBox';
 import { useChatStore } from '../../store/chatStore';
 import { useUIStore } from '../../store/uiStore';
-import { sendMessage, createConversation, ChatMessage } from '../../api/chatApi';
+import { sendMessage, createConversation, ChatMessage, EscalationState } from '../../api/chatApi';
+import { useTicketWebSocket } from '../../hooks/useTicketWebSocket';
 
 export interface ChatContainerProps {
   position?: 'bottom-right' | 'bottom-left';
@@ -15,6 +16,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [escalationState, setEscalationState] = useState<EscalationState>('OPEN');
+  const [remoteTyping, setRemoteTyping] = useState(false);
+  const [connectionState, setConnectionState] = useState<'connecting' | 'live' | 'offline'>('offline');
   const {
     conversationId,
     messages,
@@ -26,6 +30,92 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     setError,
   } = useChatStore();
   const { addNotification } = useUIStore();
+  const messagesRef = useRef<ChatMessage[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const appendUniqueMessage = (message: ChatMessage) => {
+    if (messagesRef.current.some((item) => item.id === message.id)) {
+      return;
+    }
+
+    messagesRef.current = [...messagesRef.current, message];
+    addMessage(message);
+  };
+
+  useTicketWebSocket({
+    ticketId: conversationId,
+    onConnectionStateChange: setConnectionState,
+    onMessageCreated: (payload) => {
+      if (!conversationId) {
+        return;
+      }
+
+      const senderType = payload.sender_type || payload.senderType || 'ai_agent';
+      const message: ChatMessage = {
+        id: payload.id || Math.random().toString(36).substr(2, 9),
+        conversationId,
+        role:
+          senderType === 'requestor'
+            ? 'user'
+            : senderType === 'real_agent'
+            ? 'real_agent'
+            : senderType === 'ai_agent'
+            ? 'assistant'
+            : 'system',
+        senderType,
+        content: payload.content || payload.body || '',
+        timestamp: payload.timestamp || payload.created_at || new Date().toISOString(),
+        confidence: payload.confidence,
+      };
+
+      appendUniqueMessage(message);
+    },
+    onTyping: ({ senderType, isTyping }) => {
+      if (senderType === 'requestor') {
+        return;
+      }
+      setRemoteTyping(isTyping);
+    },
+    onStatusChanged: (payload) => {
+      const nextState = payload.escalation_state || payload.escalationState;
+      if (nextState) {
+        setEscalationState(nextState);
+      }
+    },
+    onEscalationRequested: () => {
+      if (!conversationId) {
+        return;
+      }
+
+      setEscalationState('ESCALATION_REQUESTED');
+      appendUniqueMessage({
+        id: `sys_escalation_requested_${Date.now()}`,
+        conversationId,
+        role: 'system',
+        senderType: 'system',
+        content: 'Escalation requested. A real agent will join shortly.',
+        timestamp: new Date().toISOString(),
+      });
+    },
+    onEscalationAccepted: () => {
+      if (!conversationId) {
+        return;
+      }
+
+      setEscalationState('HUMAN_ACTIVE');
+      appendUniqueMessage({
+        id: `sys_escalation_accepted_${Date.now()}`,
+        conversationId,
+        role: 'system',
+        senderType: 'system',
+        content: 'A real agent joined your chat.',
+        timestamp: new Date().toISOString(),
+      });
+    },
+  });
 
   // Initialize conversation on mount
   useEffect(() => {
@@ -55,10 +145,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       id: Math.random().toString(36).substr(2, 9),
       conversationId,
       role: 'user',
+      senderType: 'requestor',
       content: text,
       timestamp: new Date().toISOString(),
     };
-    addMessage(userMessage);
+    appendUniqueMessage(userMessage);
 
     setLoading(true);
     setError(null);
@@ -70,12 +161,49 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       const assistantMessage: ChatMessage = {
         id: response.id,
         conversationId,
-        role: 'assistant',
+        role: response.senderType === 'real_agent' ? 'real_agent' : 'assistant',
+        senderType: response.senderType || 'ai_agent',
         content: response.agentResponse,
         timestamp: new Date().toISOString(),
         confidence: response.confidence,
       };
-      addMessage(assistantMessage);
+      appendUniqueMessage(assistantMessage);
+
+      const nextEscalationState = response.escalationState || (response.status === 'escalated' ? 'ESCALATION_QUEUED' : 'OPEN');
+      setEscalationState(nextEscalationState);
+
+      if (nextEscalationState === 'ESCALATION_REQUESTED' || nextEscalationState === 'ESCALATION_QUEUED') {
+        appendUniqueMessage({
+          id: Math.random().toString(36).substr(2, 9),
+          conversationId,
+          role: 'system',
+          senderType: 'system',
+          content: 'Escalation requested. A real agent will join shortly.',
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (nextEscalationState === 'HUMAN_ACTIVE') {
+        appendUniqueMessage({
+          id: Math.random().toString(36).substr(2, 9),
+          conversationId,
+          role: 'system',
+          senderType: 'system',
+          content: 'A real agent joined your chat.',
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (nextEscalationState === 'HUMAN_RESOLVED') {
+        appendUniqueMessage({
+          id: Math.random().toString(36).substr(2, 9),
+          conversationId,
+          role: 'system',
+          senderType: 'system',
+          content: 'Your ticket was resolved by a real agent.',
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // Handle status changes
       if (response.status === 'escalated') {
@@ -97,10 +225,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           id: Math.random().toString(36).substr(2, 9),
           conversationId,
           role: 'system',
+          senderType: 'system',
           content: `You are now chatting with ${response.agentAssigned}`,
           timestamp: new Date().toISOString(),
         };
-        addMessage(systemMessage);
+        appendUniqueMessage(systemMessage);
       }
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -138,7 +267,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         <div>
           <h3 className="font-semibold">Support Assistant</h3>
           <p className="text-xs text-blue-100">
-            {isLoading ? 'Processing...' : 'Online'}
+            {isLoading
+              ? 'Processing...'
+              : connectionState === 'live'
+              ? 'Live updates connected'
+              : 'Online'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -167,7 +300,17 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* Messages and Input */}
       {!isMinimized && (
         <>
-          <MessageList messages={messages} isLoading={isLoading} />
+          <MessageList
+            messages={messages}
+            isLoading={isLoading || remoteTyping}
+            typingLabel={
+              remoteTyping && escalationState === 'HUMAN_ACTIVE'
+                ? 'Real agent is typing...'
+                : remoteTyping
+                ? 'Agent is typing...'
+                : 'AI assistant is typing...'
+            }
+          />
           <InputBox onSend={handleSendMessage} isLoading={isLoading} />
         </>
       )}

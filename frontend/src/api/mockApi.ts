@@ -3,7 +3,8 @@ type UserRole = 'REQUESTOR' | 'REAL_AGENT' | 'PLATFORM_ADMIN';
 type ConversationMessage = {
   id: string;
   conversationId: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'real_agent';
+  senderType: 'requestor' | 'ai_agent' | 'real_agent' | 'system';
   content: string;
   timestamp: string;
 };
@@ -116,6 +117,7 @@ const tickets: MockTicket[] = [
         id: generateId('msg'),
         conversationId: 'conv-abc123',
         role: 'user',
+        senderType: 'requestor',
         content: 'My order has not arrived.',
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
       },
@@ -123,6 +125,7 @@ const tickets: MockTicket[] = [
         id: generateId('msg'),
         conversationId: 'conv-abc123',
         role: 'assistant',
+        senderType: 'ai_agent',
         content: 'I am checking your delivery status now.',
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1.5).toISOString(),
       },
@@ -145,6 +148,7 @@ const tickets: MockTicket[] = [
         id: generateId('msg'),
         conversationId: 'conv-def456',
         role: 'user',
+        senderType: 'requestor',
         content: 'I need to return an item.',
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
       },
@@ -152,6 +156,7 @@ const tickets: MockTicket[] = [
         id: generateId('msg'),
         conversationId: 'conv-def456',
         role: 'assistant',
+        senderType: 'ai_agent',
         content: 'Please follow the return link we sent to your email.',
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5.5).toISOString(),
       },
@@ -174,6 +179,7 @@ const tickets: MockTicket[] = [
         id: generateId('msg'),
         conversationId: 'conv-ghi789',
         role: 'user',
+        senderType: 'requestor',
         content: 'The product is damaged.',
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
       },
@@ -181,6 +187,7 @@ const tickets: MockTicket[] = [
         id: generateId('msg'),
         conversationId: 'conv-ghi789',
         role: 'assistant',
+        senderType: 'ai_agent',
         content: 'I am transferring this ticket to our specialist team.',
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 23).toISOString(),
       },
@@ -254,9 +261,10 @@ export const sendMessage = async (
 ) => {
   await delay(600);
   const normalized = message.toLowerCase();
+  const wantsHuman = normalized.includes('agent') || normalized.includes('human');
 
-  const responseText = normalized.includes('agent')
-    ? 'I am connecting you to a live agent now.'
+  const responseText = wantsHuman
+    ? 'I have requested a real agent. You can continue typing while they join.'
     : normalized.includes('return')
     ? 'I can help with that return. Please share your order number.'
     : normalized.includes('order')
@@ -267,16 +275,20 @@ export const sendMessage = async (
     id: generateId('msg'),
     conversationId,
     agentResponse: responseText,
-    status: (normalized.includes('agent') ? 'escalated' : 'resolved') as 'resolved' | 'escalated',
+    status: (wantsHuman ? 'escalated' : 'resolved') as 'resolved' | 'escalated',
+    escalationState: (wantsHuman ? 'HUMAN_ACTIVE' : 'OPEN') as 'HUMAN_ACTIVE' | 'OPEN',
+    senderType: (wantsHuman ? 'real_agent' : 'ai_agent') as 'real_agent' | 'ai_agent',
+    liveAgentOnline: wantsHuman,
     confidence: 0.93,
     ticketId: normalized.includes('order') ? 'ticket-001' : 'ticket-002',
-    agentAssigned: normalized.includes('agent') ? 'Live Support Agent' : undefined,
+    agentAssigned: wantsHuman ? 'Live Support Agent' : undefined,
   };
 
   const messageRecord: ConversationMessage = {
     id: generateId('msg'),
     conversationId,
     role: 'user',
+    senderType: 'requestor',
     content: message,
     timestamp: new Date().toISOString(),
   };
@@ -284,7 +296,8 @@ export const sendMessage = async (
   const assistantRecord: ConversationMessage = {
     id: response.id,
     conversationId,
-    role: 'assistant',
+    role: wantsHuman ? 'real_agent' : 'assistant',
+    senderType: wantsHuman ? 'real_agent' : 'ai_agent',
     content: responseText,
     timestamp: new Date().toISOString(),
   };

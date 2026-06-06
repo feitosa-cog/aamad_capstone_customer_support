@@ -3,7 +3,8 @@ import clsx from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 
 export interface MessageBubbleProps {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'real_agent';
+  senderType?: 'requestor' | 'ai_agent' | 'real_agent' | 'system';
   content: string;
   timestamp: string;
   confidence?: number;
@@ -11,11 +12,14 @@ export interface MessageBubbleProps {
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   role,
+  senderType,
   content,
   timestamp,
   confidence,
 }) => {
-  const isUser = role === 'user';
+  const effectiveSenderType = senderType || (role === 'user' ? 'requestor' : role === 'real_agent' ? 'real_agent' : role === 'assistant' ? 'ai_agent' : 'system');
+  const isUser = effectiveSenderType === 'requestor';
+  const isRealAgent = effectiveSenderType === 'real_agent';
   const isSystem = role === 'system';
 
   return (
@@ -28,7 +32,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       <div
         className={clsx('max-w-xs lg:max-w-md px-4 py-2 rounded-lg', {
           'bg-blue-600 text-white rounded-br-none': isUser,
-          'bg-gray-200 text-gray-900 rounded-bl-none': !isUser && !isSystem,
+          'bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-bl-none': isRealAgent,
+          'bg-gray-200 text-gray-900 rounded-bl-none': !isUser && !isSystem && !isRealAgent,
           'bg-amber-100 text-amber-900 border border-amber-300': isSystem,
         })}
       >
@@ -41,7 +46,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           })}
         >
           {formatDistanceToNow(new Date(timestamp), { addSuffix: true })}
-          {confidence && !isUser && (
+          {isRealAgent && <span className="ml-2 font-medium">(real agent)</span>}
+          {confidence && !isUser && !isRealAgent && (
             <span className="ml-2">
               ({Math.round(confidence * 100)}% confidence)
             </span>
