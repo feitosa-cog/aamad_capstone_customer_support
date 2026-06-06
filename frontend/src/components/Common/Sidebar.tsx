@@ -58,7 +58,7 @@ export const Sidebar: React.FC = () => {
 
         <nav className="p-4 space-y-2">
           {menuItems.map(({ icon: Icon, label, href }) => {
-            const isActive = location.pathname === href;
+            const isActive = location.pathname === href || (href !== '/' && location.pathname.startsWith(`${href}/`));
             return (
               <Link
                 key={href}

@@ -5,6 +5,7 @@ import {
   updateTicket as mockUpdateTicket,
   escalateTicket as mockEscalateTicket,
   assignTicket as mockAssignTicket,
+  getHandoffContext as mockGetHandoffContext,
 } from './mockApi';
 import { useMockApi } from './apiConfig';
 
@@ -15,6 +16,8 @@ export interface Ticket {
   status: 'open' | 'in_progress' | 'resolved' | 'escalated';
   createdAt: string;
   updatedAt: string;
+  escalationRequestedAt?: string;
+  queueWaitSeconds?: number;
   transcript: Array<{
     role: string;
     content: string;
@@ -37,6 +40,10 @@ type BackendTicket = {
   status?: string;
   createdAt?: string;
   updatedAt?: string;
+  escalationRequestedAt?: string;
+  escalation_requested_at?: string;
+  queueWaitSeconds?: number;
+  queue_wait_seconds?: number;
   transcript?: Array<{
     role?: string;
     sender_type?: string;
@@ -55,8 +62,31 @@ type BackendTicket = {
     handoff_notes?: string;
     resolutionNotes?: string;
     agentAssigned?: string;
+    escalation_requested_at?: string;
+    queue_wait_seconds?: number;
   };
 };
+
+export interface HandoffContext {
+  ticket_id: string;
+  escalation: {
+    requested_at: string;
+    reason: string;
+    priority: 'low' | 'medium' | 'high';
+    queue_wait_seconds: number;
+  };
+  ai_summary: {
+    intent: string;
+    attempted_actions: string[];
+    resolution_attempts: number;
+    last_ai_message: string;
+  };
+  customer_context: {
+    user_id: string;
+    open_ticket_count: number;
+    recent_ticket_ids: string[];
+  };
+}
 
 const normalizeStatus = (status?: string): Ticket['status'] => {
   if (status === 'resolved' || status === 'escalated' || status === 'in_progress' || status === 'open') {
@@ -75,6 +105,12 @@ const normalizeTicket = (raw: BackendTicket): Ticket => {
     status: normalizeStatus(raw.status),
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || raw.createdAt || now,
+    escalationRequestedAt:
+      raw.escalationRequestedAt ||
+      raw.escalation_requested_at ||
+      raw.payload?.escalation_requested_at ||
+      undefined,
+    queueWaitSeconds: raw.queueWaitSeconds || raw.queue_wait_seconds || raw.payload?.queue_wait_seconds,
     transcript: (raw.transcript || []).map((message) => ({
       role: message.role || message.sender_type || 'system',
       content: message.content || '',
@@ -196,4 +232,13 @@ export const addTicketNotes = async (ticketId: string, notes: string): Promise<T
     notes,
   });
   return normalizeTicket(response.data as BackendTicket);
+};
+
+export const getHandoffContext = async (ticketId: string): Promise<HandoffContext> => {
+  if (useMockApi) {
+    return mockGetHandoffContext(ticketId);
+  }
+
+  const response = await apiClient.get(`/api/v1/tickets/${ticketId}/handoff-context`);
+  return response.data as HandoffContext;
 };

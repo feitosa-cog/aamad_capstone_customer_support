@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, Minimize2, Maximize2 } from 'lucide-react';
 import MessageList from './MessageList';
 import InputBox from './InputBox';
+import EscalationBanner from './EscalationBanner';
 import { useChatStore } from '../../store/chatStore';
 import { useUIStore } from '../../store/uiStore';
 import { sendMessage, createConversation, ChatMessage, EscalationState } from '../../api/chatApi';
@@ -300,6 +301,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* Messages and Input */}
       {!isMinimized && (
         <>
+          <EscalationBanner escalationState={escalationState} />
           <MessageList
             messages={messages}
             isLoading={isLoading || remoteTyping}

@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMockApi } from '../api/apiConfig';
+import { getConversationHistory } from '../api/chatApi';
 import type { EscalationState, SenderType } from '../api/chatApi';
 
 type ConnectionState = 'connecting' | 'live' | 'offline';
@@ -75,24 +76,54 @@ export const useTicketWebSocket = ({
   onEscalationAccepted,
   onConnectionStateChange,
 }: UseTicketWebSocketOptions) => {
+  const [connectionState, setConnectionState] = useState<ConnectionState>('offline');
+  const hasSyncedLiveRef = useRef(false);
+
+  const syncHistory = useCallback(async () => {
+    if (!ticketId) {
+      return;
+    }
+
+    try {
+      const history = await getConversationHistory(ticketId);
+      history.forEach((message) => {
+        onMessageCreated?.({
+          id: message.id,
+          conversationId: message.conversationId,
+          sender_type: message.senderType,
+          content: message.content,
+          created_at: message.timestamp,
+        });
+      });
+    } catch {
+      // Keep the UI responsive when catch-up fails; the next poll/reconnect will retry.
+    }
+  }, [ticketId, onMessageCreated]);
+
   useEffect(() => {
     if (!ticketId || useMockApi || typeof WebSocket === 'undefined') {
+      setConnectionState('offline');
       onConnectionStateChange?.('offline');
       return;
     }
 
+    hasSyncedLiveRef.current = false;
+    setConnectionState('connecting');
     onConnectionStateChange?.('connecting');
     const socket = new WebSocket(buildTicketWsUrl(ticketId));
 
     socket.onopen = () => {
+      setConnectionState('live');
       onConnectionStateChange?.('live');
     };
 
     socket.onclose = () => {
+      setConnectionState('offline');
       onConnectionStateChange?.('offline');
     };
 
     socket.onerror = () => {
+      setConnectionState('offline');
       onConnectionStateChange?.('offline');
     };
 
@@ -146,6 +177,30 @@ export const useTicketWebSocket = ({
     onEscalationAccepted,
     onConnectionStateChange,
   ]);
+
+  useEffect(() => {
+    if (useMockApi || !ticketId) {
+      return;
+    }
+
+    if (connectionState === 'live' && !hasSyncedLiveRef.current) {
+      hasSyncedLiveRef.current = true;
+      void syncHistory();
+      return;
+    }
+
+    if (connectionState !== 'offline') {
+      return;
+    }
+
+    const poller = window.setInterval(() => {
+      void syncHistory();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(poller);
+    };
+  }, [connectionState, ticketId, syncHistory]);
 };
 
 export default useTicketWebSocket;

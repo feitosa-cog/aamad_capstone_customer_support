@@ -1,9 +1,32 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { useTicketStore } from '../../store/ticketStore';
 
+const ACCEPTANCE_SLA_SECONDS = 180;
+
+const formatRemaining = (nowMs: number, ticketCreatedAt: string, escalationRequestedAt?: string) => {
+  const start = escalationRequestedAt || ticketCreatedAt;
+  const elapsed = Math.floor((nowMs - new Date(start).getTime()) / 1000);
+  const remaining = ACCEPTANCE_SLA_SECONDS - elapsed;
+  const abs = Math.abs(remaining);
+  const mm = Math.floor(abs / 60)
+    .toString()
+    .padStart(2, '0');
+  const ss = Math.floor(abs % 60)
+    .toString()
+    .padStart(2, '0');
+
+  return { remaining, label: `${remaining >= 0 ? '' : '-'}${mm}:${ss}` };
+};
+
 export const ActiveTickets: React.FC = () => {
   const { tickets, selectedTicket, selectTicket } = useTicketStore();
+  const [clock, setClock] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const openTickets = tickets.filter((t) => t.status === 'open');
   const inProgressTickets = tickets.filter((t) => t.status === 'in_progress');
@@ -37,8 +60,19 @@ export const ActiveTickets: React.FC = () => {
                   <div className="font-medium truncate">
                     {ticket.category} - {ticket.customerId}
                   </div>
-                  <div className="text-xs text-gray-600">
-                    {new Date(ticket.createdAt).toLocaleTimeString()}
+                  <div className="text-xs text-gray-600 flex items-center gap-2">
+                    <span>{new Date(ticket.createdAt).toLocaleTimeString()}</span>
+                    {(() => {
+                      const timer = formatRemaining(clock, ticket.createdAt, ticket.escalationRequestedAt);
+                      const timerClassName =
+                        timer.remaining < 0
+                          ? 'text-red-700'
+                          : timer.remaining < 60
+                          ? 'text-amber-700'
+                          : 'text-emerald-700';
+
+                      return <span className={`font-semibold ${timerClassName}`}>SLA {timer.label}</span>;
+                    })()}
                   </div>
                 </button>
               ))}

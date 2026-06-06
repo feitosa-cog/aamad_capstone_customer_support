@@ -26,6 +26,18 @@ export interface ChatMessage {
   confidence?: number;
 }
 
+interface SendTicketMessageResponse {
+  id?: string;
+  conversationId?: string;
+  conversation_id?: string;
+  role?: string;
+  sender_type?: SenderType;
+  content?: string;
+  body?: string;
+  timestamp?: string;
+  created_at?: string;
+}
+
 export interface ChatResponse {
   id: string;
   conversationId: string;
@@ -150,6 +162,8 @@ export const sendMessage = async (
   try {
     const response = await apiClient.post(`/api/v1/tickets/${conversationId}/messages`, {
       message,
+      body: message,
+      sender_type: 'requestor',
       metadata,
     });
     return normalizeResponse(conversationId, response.data as BackendChatResponse);
@@ -172,11 +186,50 @@ export const getConversationHistory = async (
 
   try {
     const response = await apiClient.get(`/api/v1/tickets/${conversationId}/messages`);
-    return (response.data as BackendMessage[]).map((item) => normalizeMessage(conversationId, item));
+    return (response.data as BackendMessage[])
+      .map((item) => normalizeMessage(conversationId, item))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   } catch {
     const response = await apiClient.get(`/chat/${conversationId}`);
-    return (response.data as BackendMessage[]).map((item) => normalizeMessage(conversationId, item));
+    return (response.data as BackendMessage[])
+      .map((item) => normalizeMessage(conversationId, item))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
+};
+
+export const sendTicketMessage = async (
+  ticketId: string,
+  body: string,
+  senderType: SenderType = 'requestor'
+): Promise<ChatMessage> => {
+  if (useMockApi) {
+    const timestamp = new Date().toISOString();
+    return {
+      id: Math.random().toString(36).slice(2, 11),
+      conversationId: ticketId,
+      role: senderType === 'requestor' ? 'user' : senderType === 'real_agent' ? 'real_agent' : 'assistant',
+      senderType,
+      content: body,
+      timestamp,
+    };
+  }
+
+  const response = await apiClient.post(`/api/v1/tickets/${ticketId}/messages`, {
+    sender_type: senderType,
+    body,
+  });
+
+  const payload = response.data as SendTicketMessageResponse;
+  const normalizedSenderType = normalizeSenderType(payload.sender_type, payload.role || 'real_agent');
+
+  return {
+    id: payload.id || Math.random().toString(36).slice(2, 11),
+    conversationId: payload.conversationId || payload.conversation_id || ticketId,
+    role: normalizeRole(normalizedSenderType, payload.role),
+    senderType: normalizedSenderType,
+    content: payload.content || payload.body || body,
+    timestamp: payload.timestamp || payload.created_at || new Date().toISOString(),
+  };
 };
 
 export const createConversation = async (): Promise<{ conversationId: string }> => {

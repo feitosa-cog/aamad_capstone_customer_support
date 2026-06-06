@@ -9,7 +9,7 @@ type ConversationMessage = {
   timestamp: string;
 };
 
-type TicketStatus = 'open' | 'resolved' | 'escalated';
+type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'escalated';
 
 type MockTicket = {
   id: string;
@@ -18,6 +18,8 @@ type MockTicket = {
   status: TicketStatus;
   createdAt: string;
   updatedAt: string;
+  escalationRequestedAt?: string;
+  queueWaitSeconds?: number;
   transcript: ConversationMessage[];
   agentNotes: string;
   priority: 1 | 2 | 3 | 4 | 5;
@@ -174,6 +176,8 @@ const tickets: MockTicket[] = [
     status: 'escalated',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
     updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
+    escalationRequestedAt: new Date(Date.now() - 1000 * 60 * 7).toISOString(),
+    queueWaitSeconds: 420,
     transcript: [
       {
         id: generateId('msg'),
@@ -417,5 +421,45 @@ export const getSystemHealth = async () => {
     database: 'degraded' as const,
     queue: 'healthy' as const,
     lastUpdated: new Date().toISOString(),
+  };
+};
+
+export const getHandoffContext = async (ticketId: string) => {
+  await delay();
+  const ticket = tickets.find((item) => item.id === ticketId);
+
+  if (!ticket) {
+    throw new Error('Ticket not found');
+  }
+
+  const attemptedActions = ['intent_classifier', 'order_lookup', 'refund_policy_check'];
+  const priority: 'low' | 'medium' | 'high' =
+    ticket.priority <= 2 ? 'high' : ticket.priority === 3 ? 'medium' : 'low';
+  const aiMessage = [...ticket.transcript]
+    .reverse()
+    .find((entry) => entry.senderType === 'ai_agent' || entry.senderType === 'system');
+
+  return {
+    ticket_id: ticket.id,
+    escalation: {
+      requested_at: ticket.escalationRequestedAt || ticket.createdAt,
+      reason: ticket.agentNotes || 'customer_requested_human',
+      priority,
+      queue_wait_seconds: ticket.queueWaitSeconds || 0,
+    },
+    ai_summary: {
+      intent: ticket.category.toLowerCase().replace(/\s+/g, '_'),
+      attempted_actions: attemptedActions,
+      resolution_attempts: 2,
+      last_ai_message: aiMessage?.content || 'Escalated after repeated unsuccessful attempts.',
+    },
+    customer_context: {
+      user_id: ticket.customerId,
+      open_ticket_count: tickets.filter((item) => item.customerId === ticket.customerId && item.status !== 'resolved').length,
+      recent_ticket_ids: tickets
+        .filter((item) => item.customerId === ticket.customerId)
+        .slice(0, 3)
+        .map((item) => item.id),
+    },
   };
 };

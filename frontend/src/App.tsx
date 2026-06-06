@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import ChatPage from './pages/ChatPage';
 import DashboardPage from './pages/DashboardPage';
 import AgentPage from './pages/AgentPage';
+import RealAgentConversationPage from './pages/RealAgentConversationPage';
 import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
 import { getRoleHomeRoute, type UserRole } from './auth/roles';
@@ -93,6 +94,15 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={['REAL_AGENT', 'PLATFORM_ADMIN']}>
                 <AgentPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/agent/conversation/:ticketId"
+            element={
+              <ProtectedRoute allowedRoles={['REAL_AGENT', 'PLATFORM_ADMIN']}>
+                <RealAgentConversationPage />
               </ProtectedRoute>
             }
           />
