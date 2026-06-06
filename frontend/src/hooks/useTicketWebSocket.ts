@@ -23,6 +23,7 @@ interface StatusPayload {
   status?: string;
   escalationState?: EscalationState;
   escalation_state?: EscalationState;
+  state?: EscalationState;
 }
 
 interface UseTicketWebSocketOptions {
@@ -115,6 +116,12 @@ export const useTicketWebSocket = ({
     socket.onopen = () => {
       setConnectionState('live');
       onConnectionStateChange?.('live');
+      socket.send(
+        JSON.stringify({
+          type: 'subscribe',
+          ticket_id: ticketId,
+        })
+      );
     };
 
     socket.onclose = () => {
@@ -139,7 +146,8 @@ export const useTicketWebSocket = ({
       const payload = data.payload || data.data || data;
 
       if (type === 'chat.message.created') {
-        onMessageCreated?.(payload as WebSocketMessagePayload);
+        const messagePayload = (payload as any).message || payload;
+        onMessageCreated?.(messagePayload as WebSocketMessagePayload);
         return;
       }
 
@@ -151,7 +159,12 @@ export const useTicketWebSocket = ({
       }
 
       if (type === 'ticket.status.changed') {
-        onStatusChanged?.(payload as StatusPayload);
+        const statusPayload = payload as StatusPayload;
+        onStatusChanged?.({
+          ...statusPayload,
+          escalationState: statusPayload.escalationState || statusPayload.escalation_state || statusPayload.state,
+          escalation_state: statusPayload.escalation_state || statusPayload.escalationState || statusPayload.state,
+        });
         return;
       }
 

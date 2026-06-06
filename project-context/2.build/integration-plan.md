@@ -1,8 +1,8 @@
 # Integration Plan: Agentic Customer Support System
 
-**Date**: June 5, 2026
+**Date**: June 6, 2026
 **Owner**: Integration Engineer
-**Status**: Completed (MVP integration baseline)
+**Status**: In Progress (MVP baseline complete, contract hardening in progress)
 
 ---
 
@@ -141,9 +141,13 @@ The frontend application expects the following backend endpoints:
 | Wire requestor "My Tickets" route and data source | Completed | `/dashboard` now role-allowed for requestor and uses `/api/v1/tickets/mine` |
 | Wire agent queue actions to RBAC endpoints | Completed | Agent workspace uses `/api/v1/queue`, accept, resolve, and notes endpoints |
 | Add end-to-end API flow test | Completed | New backend test covers submit -> queue -> accept -> notes -> resolve |
+| Fix WebSocket event parsing for live chat | Completed | `chat.message.created` now correctly reads nested `message` payload |
+| Add explicit ticket WS subscribe handshake | Completed | Frontend sends `subscribe` on socket open per SAD contract |
+| Normalize status transitions from WS events | Completed | Handles `state`, `escalation_state`, and `escalationState` consistently |
+| Normalize ticket message body/content shapes | Completed | Frontend now maps both `content` and `body` fields for message rendering |
 | Document integration plan | Completed | Created `project-context/2.build/integration-plan.md` |
-| Run backend integration tests | Completed | `12 passed` |
-| Run frontend validation | Completed | `npm test` passed and production build succeeded |
+| Run backend integration tests | Completed | `18 passed` |
+| Run frontend validation | Completed | `npm test -- --run` passed and production build succeeded |
 
 ## 9. Progress Summary
 
@@ -195,3 +199,17 @@ curl http://127.0.0.1:8000/tickets
 	- Backend tests: `pytest tests -q` -> **12 passed**
 
 **Status:** Integration plan execution completed for MVP baseline. End-to-end data flow is validated at API and app integration level with role-based workflows.
+
+### Verification Log (June 6, 2026)
+
+- Action: Reviewed PRD and SAD deltas against current integration code with focus on escalated human chat contract and WebSocket event compatibility.
+- Action: Fixed frontend WebSocket consumption to correctly parse backend `chat.message.created` events with nested `message` payload.
+- Action: Added frontend ticket WebSocket subscribe event on connection open to align with session contract.
+- Action: Hardened status mapping so UI handles `state`, `escalation_state`, and `escalationState` payloads.
+- Action: Updated chat message normalization to map both `content` and `body` fields from backend message APIs.
+- Validation:
+	- Backend tests: `/Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest tests -q` -> **18 passed**
+	- Frontend tests: `npm test -- --run` -> **3 files, 9 tests passed**
+	- Frontend build: `npm run build` -> **passed**
+
+**Status:** Integration hardening update completed. End-to-end data flow and live event wiring are verified for current MVP contracts.

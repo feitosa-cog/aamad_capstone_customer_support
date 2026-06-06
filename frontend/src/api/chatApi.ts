@@ -58,6 +58,7 @@ type BackendMessage = {
   role?: string;
   sender_type?: SenderType;
   content?: string;
+  body?: string;
   timestamp?: string;
   created_at?: string;
   confidence?: number;
@@ -67,6 +68,7 @@ type BackendChatResponse = {
   id?: string;
   conversationId?: string;
   conversation_id?: string;
+  conversationState?: EscalationState;
   agentResponse?: string;
   response?: string;
   status?: string;
@@ -78,6 +80,10 @@ type BackendChatResponse = {
   ticket_id?: string;
   agentAssigned?: string;
   agent_assigned?: string;
+  payload?: {
+    response?: string;
+    confidence?: number;
+  };
 };
 
 const normalizeSenderType = (senderType?: string, role?: string): SenderType => {
@@ -127,21 +133,33 @@ const normalizeMessage = (conversationId: string, message: BackendMessage): Chat
     conversationId: message.conversationId || message.conversation_id || conversationId,
     senderType,
     role: normalizeRole(senderType, message.role),
-    content: message.content || '',
+    content: message.content || message.body || '',
     timestamp: message.timestamp || message.created_at || new Date().toISOString(),
     confidence: message.confidence,
   };
 };
 
+const normalizeChatStatus = (status?: string): ChatResponse['status'] => {
+  if (status === 'resolved' || status === 'escalated' || status === 'in-progress') {
+    return status;
+  }
+
+  if (status === 'in_progress' || status === 'open') {
+    return 'in-progress';
+  }
+
+  return 'in-progress';
+};
+
 const normalizeResponse = (conversationId: string, response: BackendChatResponse): ChatResponse => ({
   id: response.id || Math.random().toString(36).slice(2, 11),
   conversationId: response.conversationId || response.conversation_id || conversationId,
-  agentResponse: response.agentResponse || response.response || '',
-  status: (response.status || 'in-progress') as ChatResponse['status'],
-  escalationState: response.escalation_state,
+  agentResponse: response.agentResponse || response.response || response.payload?.response || '',
+  status: normalizeChatStatus(response.status),
+  escalationState: response.escalation_state || response.conversationState,
   senderType: response.sender_type,
   liveAgentOnline: response.live_agent_online,
-  confidence: response.confidence,
+  confidence: response.confidence || response.payload?.confidence,
   ticketId: response.ticketId || response.ticket_id,
   agentAssigned: response.agentAssigned || response.agent_assigned,
 });
@@ -160,20 +178,22 @@ export const sendMessage = async (
   }
 
   try {
-    const response = await apiClient.post(`/api/v1/tickets/${conversationId}/messages`, {
-      message,
-      body: message,
-      sender_type: 'requestor',
-      metadata,
-    });
-    return normalizeResponse(conversationId, response.data as BackendChatResponse);
-  } catch {
     const response = await apiClient.post('/chat', {
       conversationId,
       message,
       metadata,
     });
     return normalizeResponse(conversationId, response.data as BackendChatResponse);
+  } catch {
+    try {
+      const response = await apiClient.post('/api/v1/tickets', {
+      message,
+      metadata,
+      });
+      return normalizeResponse(conversationId, response.data as BackendChatResponse);
+    } catch {
+      throw new Error('Unable to send message to backend chat endpoints');
+    }
   }
 };
 
