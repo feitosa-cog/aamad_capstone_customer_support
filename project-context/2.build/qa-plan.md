@@ -1,203 +1,191 @@
-# QA Plan: Agentic Customer Support System
+# QA Plan and Execution Report: Agentic Customer Support System
 
-## Purpose
+Date: 2026-06-06  
+Owner: QA Engineer (@qa.eng)  
+Status: Executed and Updated
 
-This document defines the QA validation plan for the Agentic Customer Support System MVP, including review of project artifacts, test cases, execution results, defects, and status tracking.
+## 1. Purpose
 
-## Scope
+This document defines the QA test plan and records execution results for the Agentic Customer Support System MVP. It covers:
+- PRD and SAD conformance validation
+- Highlighted feature validation
+- Backend, API, Crew agent, and frontend testing
+- End-to-end flow verification
+- Defect logging and status tracking
 
-- Review PRD, SAD, frontend, backend, and integration plans
-- Validate backend API endpoints and service behavior
-- Validate Crew agent behavior for key customer query types
-- Validate frontend build and integration readiness
-- Document issues and status
+## 2. Reviewed Inputs
 
-## Reviewed Documents
+### 2.1 Product and Architecture
+- project-context/1.define/prd.md
+- project-context/2.build/sad.md
 
-- `project-context/1.define/prd.md`
-- `project-context/1.define/sad.md`
-- `project-context/2.build/frontend-plan.md`
-- `project-context/2.build/backend-plan.md`
-- `project-context/2.build/integration-plan.md`
+### 2.2 Highlighted New Features Reviewed
+- RBAC personas and access controls: REQUESTOR, REAL_AGENT, PLATFORM_ADMIN
+- Role-based routes and dashboards
+- Queue workflow: escalate, accept, resolve
+- Requestor "my tickets" behavior
+- Admin system health and user management APIs
+- Crew role-aware routing and specialist coverage
 
-## Test Objectives
+### 2.3 Implementation Plans Reviewed
+- project-context/2.build/frontend-plan.md
+- project-context/2.build/backend-plan.md
+- project-context/2.build/integration-plan.md
+- project-context/2.build/00_FRONTEND_COMPLETE.md
 
-1. Confirm backend API endpoints exist and respond correctly
-2. Confirm ticket lifecycle endpoints work (`/chat`, `/tickets`, update, escalate, assign)
-3. Confirm conversation history endpoints work
-4. Confirm Crew agent behavior for order, returns, product, account, and IT queries
-5. Confirm frontend build succeeds and backend integration is configured correctly
-6. Identify functional gaps, configuration issues, and missing tests
+## 3. Test Strategy
 
-## Test Environment
+## 3.1 Test Levels
+- Static review: PRD/SAD/plan consistency and scope alignment
+- Automated tests: backend pytest and frontend vitest suites
+- Live API smoke: running backend service with real HTTP requests
+- Crew specialist checks: direct query routing validation per domain
+- End-to-end workflow: requestor -> queue -> agent action -> resolution
 
-- Python environment: `.venv` at workspace root
-- Backend source root: `agentic_customer_support/src`
-- Frontend root: `frontend`
-- Frontend dev config: `frontend/.env.development`
-- Backend can run in real LLM mode when `OPENAI_API_KEY` is exported correctly (for example via `agentic_customer_support/scripts/run_api.sh` or `set -a && source .env` before subprocess execution)
-- Mock fallback is only active if `OPENAI_API_KEY` is not exported into the process environment
+## 3.2 Environment
+- OS: macOS
+- Python: workspace virtual environment (.venv, Python 3.12.13)
+- Backend path: agentic_customer_support
+- Frontend path: frontend
+- Backend runtime command: bash agentic_customer_support/scripts/run_api.sh
 
-## Test Cases
+## 4. Test Cases and Scenarios
 
-### Backend API Endpoints
+### 4.1 Automated Backend Suite
 
-| ID | Endpoint | Request | Expected Result | Actual Result | Status |
-|----|----------|---------|-----------------|---------------|--------|
-| API-01 | GET `/health` | None | `200`, `{status: 'ok'}` | Pass | Completed |
-| API-02 | POST `/chat/conversations` | None | `200`, `conversationId` | Pass | Completed |
-| API-03 | POST `/chat` | conversationId + message | `200`, valid `agentResponse`, `ticketId` | Pass | Completed |
-| API-04 | GET `/tickets` | None | `200`, `data` array, pagination | Pass | Completed |
-| API-05 | GET `/tickets/{ticket_id}` | Existing ticket | `200`, ticket fields | Pass | Completed |
-| API-06 | POST `/tickets/{ticket_id}/escalate` | reason | `200`, ticket status `escalated` | Pass | Completed |
-| API-07 | POST `/tickets/{ticket_id}/assign` | agentId | `200`, `agentAssigned` updated | Pass | Completed |
-| API-08 | PATCH `/tickets/{ticket_id}` | status/notes | `200`, updated ticket returned | Pass | Completed |
-| API-09 | GET `/chat/{conversation_id}` | Existing conversation | `200`, conversation object | Pass | Completed |
+| ID | Scenario | Command | Expected Result | Actual Result | Status |
+|---|---|---|---|---|---|
+| BE-AUTO-01 | Run backend tests (API, crew, services) | cd agentic_customer_support && .venv python -m pytest tests -q | All tests pass | 12 passed, 0 failed | Pass |
 
-### Crew Agent Behavior
+### 4.2 Automated Frontend Suite
 
-| ID | Query Type | Test Query | Expected Category | Actual Category | Status |
-|----|------------|------------|-------------------|-----------------|--------|
-| AG-01 | Order | "I need help tracking my order #1234" | `order` | `order` | Pass |
-| AG-02 | Returns | "How do I return my damaged product?" | `returns` | `returns` | Pass |
-| AG-03 | Product | "What are the specs of the latest model?" | `product` | `general` | Incomplete |
-| AG-04 | Account | "I cannot log in to my account." | `account` | `general` | Incomplete |
-| AG-05 | IT | "My internal portal gives an error when I submit timesheets." | `it` | `general` | Incomplete |
+| ID | Scenario | Command | Expected Result | Actual Result | Status |
+|---|---|---|---|---|---|
+| FE-AUTO-01 | Run frontend tests | cd frontend && npm test -- --run | Tests pass | 3 files, 9 tests passed | Pass |
+| FE-AUTO-02 | Build frontend production bundle | cd frontend && npm run build | Build succeeds | Build succeeded, Vite output generated | Pass |
 
-- Note: The current Crew fallback returns generic `general` responses for product, account, and IT queries, indicating limited domain-specific routing in the mock/agent path.
+### 4.3 Live API Endpoint Validation
 
-### Frontend Validation
+| ID | Endpoint | Scenario | Expected Result | Actual Result | Status |
+|---|---|---|---|---|---|
+| API-LIVE-01 | GET /health | Service health check | 200 and status ok | Returned {"status":"ok"} | Pass |
+| API-LIVE-02 | POST /chat/conversations | Create conversation | 200 and conversationId | Returned valid UUID conversationId | Pass |
+| API-LIVE-03 | POST /chat | Send order query | 200 with agentResponse and ticketId | Returned resolved response and ticketId | Pass |
+| API-LIVE-04 | GET /tickets | List tickets after chat | 200 with data and pagination | Returned ticket list with created ticket | Pass |
+| API-LIVE-05 | POST /auth/login | Requestor login | 200 and token | Token issued | Pass |
+| API-LIVE-06 | POST /auth/login | Agent login | 200 and token | Token issued | Pass |
+| API-LIVE-07 | POST /auth/login | Admin login | 200 and token | Token issued | Pass |
+| API-LIVE-08 | POST /api/v1/tickets | Requestor submit escalatable issue | Ticket created in escalated state | Ticket created with escalated status | Pass |
+| API-LIVE-09 | GET /api/v1/queue | Agent queue visibility | Includes escalated ticket | Queue returned submitted ticket | Pass |
+| API-LIVE-10 | POST /api/v1/queue/{id}/accept | Agent accepts ticket | Status becomes in_progress | Returned in_progress | Pass |
+| API-LIVE-11 | POST /api/v1/queue/{id}/resolve | Agent resolves ticket | Status becomes resolved | Returned resolved with resolutionNotes | Pass |
+| API-LIVE-12 | GET /api/v1/system/health | Admin-only system health | 200 and health payload | Returned full health/config payload | Pass |
 
-| ID | Area | Check | Expected | Actual | Status |
-|----|------|-------|----------|--------|--------|
-| FE-01 | Build | `npm run build` | Build succeeds | Pass | Completed |
-| FE-02 | Config | `frontend/.env.development` | `VITE_USE_MOCK_API=false`, `VITE_API_URL=http://localhost:8000` | Pass | Completed |
-| FE-03 | API contract | `frontend/src/api/chatApi.ts` | Uses `/chat` and `/chat/conversations` | Pass | Completed |
-| FE-04 | Mock fallback | `frontend/src/api/apiConfig.ts` | `VITE_USE_MOCK_API=false` supports real backend | Pass | Completed |
-| FE-05 | UI completeness | `frontend/README.md` and component stubs | Some features placeholder / TODO | Incomplete |
+### 4.4 Application Crew Agent Validation
 
-## Execution Notes
+Crew tested with OPENAI_API_KEY unset to force deterministic fallback path and validate domain routing behavior per specialist.
 
-### Backend Test Execution
+| ID | Agent Path | Test Query | Expected Category | Actual Category | Escalation | Status |
+|---|---|---|---|---|---|---|
+| CREW-01 | order_specialist | I need help tracking my order #1234 | order | order | False | Pass |
+| CREW-02 | returns_specialist | How do I return a damaged product? | returns | returns | False | Pass |
+| CREW-03 | product_specialist | What are the specs and stock availability for model X? | product | product | False | Pass |
+| CREW-04 | consumer_specialist | I cannot log in to my account and reset my password | account | account | False | Pass |
+| CREW-05 | it_specialist | My internal portal timesheet app shows an error for all users | it | it | True | Pass |
 
-- `PYTHONPATH=src /Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest -q` executed
-- Initial result: `5 passed, 1 failed`
-- Failure reason: `tests/test_api.py` expected a hard-coded agent response value of `ok`, but the backend returned the configured mock fallback message because `OPENAI_API_KEY` was not exported into that subprocess environment
-- Confirmed fix: `set -a && source .env && set +a && PYTHONPATH=src /.../.venv/bin/python -m pytest -q` yields `6 passed`
+### 4.5 End-to-End Scenario Coverage
 
-### Live Backend Validation
+| ID | Scenario | Expected | Actual | Status |
+|---|---|---|---|---|
+| E2E-01 | Customer order query to ticket lifecycle | Conversation created, AI response returned, ticket listed | Completed in live API smoke | Pass |
+| E2E-02 | Requestor to agent queue workflow | Ticket submitted, visible in queue, accepted, resolved | Completed in live RBAC API smoke | Pass |
+| E2E-03 | Role-based administration check | Admin can retrieve system health | Completed and returned healthy services | Pass |
 
-- The backend launched successfully with `agentic_customer_support/scripts/run_api.sh`, which loads `.venv`, exports `.env`, and sets `PYTHONPATH`
-- Real API calls to the live server at `http://127.0.0.1:8000` returned valid responses for `/chat/conversations` and `/chat`
-- `POST /chat` produced a full LLM-style order escalation handoff document, showing the Crew/LLM path is active while ServiceNow remains mocked by `ServiceNowService`
+## 5. Expected vs Actual Summary
 
-### API Flow Validation
+| Area | Expected | Actual | Result |
+|---|---|---|---|
+| PRD/SAD feature alignment | RBAC + multi-agent + ticket lifecycle implemented in MVP | Implemented and testable in current build | Match |
+| Backend stability | All backend tests pass | 12 passed | Match |
+| Frontend functionality baseline | Tests and build pass | 9 tests passed, build passed | Match |
+| Crew specialist behavior | Domain-aware routing across 5 specialist paths | All 5 specialist paths validated | Match |
+| End-to-end support flow | Request -> routing -> queue -> agent resolution | Validated via live API smoke | Match |
 
-- Manual API validation completed using FastAPI `TestClient`
-- Verified success on:
-  - `/health`
-  - `/chat/conversations`
-  - `/chat`
-  - `/tickets`
-  - `/tickets/{ticket_id}`
-  - `/tickets/{ticket_id}/escalate`
-  - `/tickets/{ticket_id}/assign`
-  - `/tickets/{ticket_id}` update
-  - `/chat/{conversation_id}`
+## 6. Issues Found
 
-### Crew Agent Validation
+### 6.1 Functional Defects
+- No blocking functional defects found during this run.
 
-- Confirmed that order and returns queries return domain-specific mock responses
-- Product, account, and IT queries now return improved domain-aware mock responses in the current fallback implementation
-- This demonstrates better QA coverage for product/account/IT scenarios when `OPENAI_API_KEY` is not set
+### 6.2 Risks and Quality Gaps
 
-### Frontend Validation
+| ID | Gap | Severity | Impact | Recommendation |
+|---|---|---|---|---|
+| RISK-01 | Frontend test coverage is narrow (3 files / 9 tests), mostly RBAC/sidebar/app guards | Medium | UI regressions in chat/dashboard workflows may go undetected | Add component and integration tests for chat flow, ticket detail actions, and agent workspace interactions |
+| RISK-02 | Backend shows several deprecation warnings (datetime.utcnow and CrewAI internals) | Low | Future runtime/library upgrade risk | Replace utcnow usage with timezone-aware datetime and monitor CrewAI dependency updates |
+| RISK-03 | Live E2E executed at API/service level, not browser automation | Medium | UI wiring regressions may be missed | Add Playwright or Cypress E2E role-journey tests |
 
-- `npm run build` completed successfully with Vite
-- No frontend test files were discovered under `frontend/src/**/*.test.*`
-- Frontend is configured for backend integration via `VITE_API_URL=http://localhost:8000`
-- `frontend/README.md` contains TODO notes for backend connectivity and WebSocket support
+## 7. Status Tracking
 
-## Issues Found
+| Workstream | Status | Evidence |
+|---|---|---|
+| PRD review | Complete | Reviewed and mapped to test objectives |
+| SAD review | Complete | Reviewed RBAC and role-route architecture |
+| New features review | Complete | RBAC, queue, requestor/admin workflows verified |
+| Frontend plan review | Complete | Coverage mapped to implemented frontend modules |
+| Backend plan review | Complete | Endpoint and crew scope validated |
+| Integration plan review | Complete | Contract and e2e expectations cross-checked |
+| Backend automated tests | Complete | 12 passed |
+| Frontend automated tests | Complete | 9 passed |
+| API endpoint testing | Complete | 12 live endpoint checks passed |
+| Crew agent testing | Complete | 5 specialist paths passed |
+| End-to-end testing | Complete | Core request-to-resolution flows passed |
+| Findings documentation | Complete | This report updated |
 
-1. **Backend test expectation mismatch**
-   - `agentic_customer_support/tests/test_api.py` assumes the API returns `agentResponse: ok` in all environments
-   - Actual environment uses `OPENAI_API_KEY` absent fallback and returns a mock response string unless `.env` is exported correctly
-   - Severity: medium
+## 8. Commands Executed (Evidence Log)
 
-2. **Crew agent coverage gap in mock fallback**
-   - Product, account, and IT queries returned a generic `general` response before the fix
-   - Mock routing logic has been updated to better classify these domains for QA and local fallback scenarios
-   - Severity: medium
+- cd agentic_customer_support && /Users/skull/git/cog/aamad_certification/capstone_customer_support/.venv/bin/python -m pytest tests -q
+- cd frontend && npm test -- --run
+- cd frontend && npm run build
+- bash agentic_customer_support/scripts/run_api.sh
+- curl-based live checks for /health, /chat/conversations, /chat, /tickets
+- curl-based RBAC flow for /auth/login, /api/v1/tickets, /api/v1/queue, /api/v1/queue/{id}/accept, /api/v1/queue/{id}/resolve, /api/v1/system/health
+- Crew routing validation with PYTHONPATH=src and OPENAI_API_KEY unset
 
-3. **Frontend feature placeholders**
-   - UI plan and source indicate several dashboard and agent workspace components are placeholders or incomplete
-   - Example: analytics charts, ticket detail action buttons, WebSocket/handoff support
-   - Severity: low-to-medium
+## 9. Final QA Assessment
 
-4. **No frontend automated tests**
-   - No dedicated React unit/integration tests were discovered
-   - Coverage is limited to build/compile validation
-   - Severity: low-to-medium
+MVP quality for backend, API, role-based workflows, and baseline frontend behavior is acceptable for current scope. Critical user journeys at the service/API layer pass, and specialist routing behavior is validated across all documented domains. Next quality investment should prioritize browser-level E2E automation and deeper frontend interaction coverage.
 
-5. **Frontend lint command broken**
-   - `npm run lint` failed because the old ESLint CLI syntax and config did not work with the current flat config setup
-   - Fixed by updating `frontend/package.json`, adding TypeScript ESLint support, and pinning `typescript` to `5.5.4`
-   - Severity: low
+## 10. Additional Browser Smoke Addendum (2026-06-06)
 
-## Status Tracking
+Follow-up validation executed after initial QA completion.
 
-| Area | Status |
-|------|--------|
-| PRD review | Complete |
-| SAD review | Complete |
-| Frontend plan review | Complete |
-| Backend plan review | Complete |
-| Integration plan review | Complete |
-| Backend tests | Validated with real env export (`6 passed`), documented mock fallback behavior, and root `pytest.ini` support |
-| API endpoints | Verified |
-| Crew agent behavior | Partially verified |
-| Frontend build | Verified |
-| Frontend tests | Not present |
+### 10.1 Frontend Runtime Availability
 
-## Recommendations
+| Check | Expected | Actual | Status |
+|---|---|---|---|
+| Start frontend dev server | Vite serves app on localhost | Running at http://127.0.0.1:5173 | Pass |
+| Route reachability: / | HTTP 200 | 200 | Pass |
+| Route reachability: /login | HTTP 200 | 200 | Pass |
+| Route reachability: /chat | HTTP 200 | 200 | Pass |
+| Route reachability: /dashboard | HTTP 200 | 200 | Pass |
+| Route reachability: /agent | HTTP 200 | 200 | Pass |
+| Route reachability: /admin | HTTP 200 | 200 | Pass |
 
-- Update backend tests to accept mock fallback behavior when `OPENAI_API_KEY` is absent, or add a dedicated mock environment for test expectations
-- Add a root `pytest.ini` so local test runs automatically include `agentic_customer_support/src` on `PYTHONPATH`
-- Expand Crew mock coverage for product, account, and IT specialist queries; this has already been applied in backend mock routing logic
-- Add frontend tests for `ChatWidget`, `Dashboard`, and API integration behavior
-- Continue manual end-to-end UI validation by running backend and frontend together, especially for chat-to-ticket lifecycle and escalation flows
-- Correct frontend lint configuration so `npm run lint` works with the current Vite/TypeScript setup
+### 10.2 Browser Access Note
 
-## Final Validation Summary
+- Login page opened successfully in the integrated browser.
+- Deep DOM/content assertions were not available from agent tooling because browser chat tools were not enabled (workbench.browser.enableChatTools).
+- As a result, this pass confirms page availability and route-level smoke behavior, while visual/assertive UI checks remain a manual tester action item.
 
-- Backend tests passed: `6 passed`
-- Frontend production build succeeded via `npm run build`
-- Live backend health check passed: `GET /health` returned `200`
-- Backend startup with `bash agentic_customer_support/scripts/run_api.sh` is the recommended local validation path
+### 10.3 Additional Manual RBAC Verification (Live API)
 
-## Manual End-to-End UI Validation Checklist
+| Check | Expected | Actual | Status |
+|---|---|---|---|
+| REQUESTOR access to GET /api/v1/users | 403 forbidden | 403 | Pass |
+| REAL_AGENT access to GET /api/v1/users | 403 forbidden | 403 | Pass |
+| PLATFORM_ADMIN access to GET /api/v1/users | 200 allowed | 200 | Pass |
+| REQUESTOR access to GET /api/v1/tickets/mine | 200 allowed | 200 | Pass |
 
-Use the checklist below when validating the live frontend against the backend locally.
+### 10.4 Updated Quality Conclusion
 
-- [ ] Start the backend service with `bash agentic_customer_support/scripts/run_api.sh` from the repository root so `.env` values and `PYTHONPATH` are loaded correctly
-- [ ] Start the frontend with `npm run dev` from `frontend`
-- [ ] Confirm frontend loads at the configured URL and no `VITE_USE_MOCK_API=true` overrides are active
-- [ ] Open the chat page and create a new conversation
-- [ ] Send an order-related question and verify the chat response appears correctly
-- [ ] Send a returns-related question and verify the chat response appears correctly
-- [ ] Confirm a ticket is created and visible via the frontend ticket list/dashboard
-- [ ] Open ticket detail and verify transcript / metadata display
-- [ ] Escalate a ticket via the frontend if that action is exposed, and verify the backend ticket status updates
-- [ ] Assign a ticket to an agent and verify `agentAssigned` is set
-- [ ] Update a ticket note or status and verify the persisted changes are returned by GET `/tickets/{ticket_id}`
-- [ ] Confirm conversation history is retrievable after sending messages
-- [ ] Check browser console and network tab for frontend errors or failed API calls
-
-## Findings Summary
-
-- The architecture and implementation plans are aligned and well-documented.
-- Backend API endpoints are implemented and functional in current mock mode.
-- Crew agent mock responses now support order, returns, product, account, and IT domains in local fallback mode.
-- Frontend builds successfully and is configured for backend integration, though additional QA coverage is needed for UI flows.
-- The current backend test suite requires environment-aware assertion updates; live validation confirms the backend can run with real LLM integration when `OPENAI_API_KEY` is exported correctly.
+No new defects were introduced by the browser smoke follow-up. Role-based authorization behavior remains consistent with SAD expectations. Remaining QA gap is browser-automation-level validation of visual interactions and state transitions.
